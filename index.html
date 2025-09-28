@@ -1947,7 +1947,7 @@ function generateReport(){
 </script>
 
 
-<!-- === Realtime Sync (Firebase) — keyed by ?customer=NAME === -->
+<!-- === Realtime Sync (Firebase) — keyed by ?customer=NAME; Customer field locks when param present === -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -1967,23 +1967,39 @@ function generateReport(){
   const db = getFirestore(app);
   const auth = getAuth(app);
 
+  // — URL param and lock logic —
   const url = new URL(window.location.href);
   let customerParam = url.searchParams.get("customer") || "";
+  const hasCustomerParam = !!customerParam;
   const nameInput = document.getElementById("customerName");
+
   if (!customerParam && nameInput && nameInput.value) customerParam = nameInput.value;
   function toKey(s) { return (s || "default").toString().trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "default"; }
   const customerKey = toKey(customerParam);
+
   if (!url.searchParams.get("customer")) {
     url.searchParams.set("customer", customerParam || "default");
     history.replaceState(null, "", url.toString());
   }
-  if (nameInput && customerParam) { nameInput.value = customerParam; }
 
+  // Reflect param into input and lock if present
+  if (nameInput) {
+    if (customerParam) { nameInput.value = customerParam; }
+    if (hasCustomerParam) {
+      nameInput.readOnly = true;
+      nameInput.setAttribute("aria-readonly", "true");
+      nameInput.title = "Locked by URL (?customer=...)";
+      try { nameInput.style.backgroundColor = "#f3f4f6"; nameInput.style.cursor = "not-allowed"; } catch {}
+    }
+  }
+
+  // Overlay
   const overlay = document.createElement("div");
   overlay.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:99999;";
   overlay.innerHTML = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
       <strong>Customer:</strong>
       <span id="rt-customer" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${customerParam || "default"}</span>
+      ${hasCustomerParam ? '<span style="margin-left:6px;">🔒</span>' : ''}
       <button id="rt-copy" style="margin-left:8px;padding:4px 8px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#f9f9fb;">Copy link</button>
     </div>
     <div><span id="rt-online" style="display:inline-block;padding:2px 8px;border:1px solid #dcdcdc;border-radius:999px;">0 online</span></div>`;
@@ -1994,14 +2010,17 @@ function generateReport(){
     const prev = btn.textContent; btn.textContent = "Copied"; setTimeout(()=>btn.textContent=prev, 1000);
   };
 
+  // Auth
   let uid = null;
   await signInAnonymously(auth);
   onAuthStateChanged(auth, (u) => { if (u) uid = u.uid; });
 
+  // Firestore refs
   const sessionRef = doc(db, "sessions", customerKey);
   let presenceRef = doc(db, "sessions", customerKey, "presence", "uid_" + (uid || "pending"));
   const presenceCol = collection(db, "sessions", customerKey, "presence");
 
+  // Presence
   async function upsertPresence() {
     try {
       await setDoc(presenceRef, { name: (nameInput && nameInput.value) || customerParam || "Guest", lastActive: serverTimestamp() }, { merge: true });
@@ -2033,6 +2052,7 @@ function generateReport(){
     if (el) el.textContent = `${online} online`;
   });
 
+  // App state serialization
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await sleep(200);
 
@@ -2075,6 +2095,7 @@ function generateReport(){
   }
   await ensureSessionDoc();
 
+  // Debounced write; prefer URL param when present
   let t = null;
   function scheduleSync() {
     if (writeGuard) return;
@@ -2082,9 +2103,21 @@ function generateReport(){
     t = setTimeout(async () => {
       try {
         writeGuard = true;
-        await updateDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid || null, customer: (nameInput && nameInput.value) || customerParam || null });
+        await updateDoc(sessionRef, { 
+          state: serializeAppState(), 
+          updatedAt: serverTimestamp(), 
+          lastWriter: uid || null, 
+          customer: (hasCustomerParam ? (customerParam || null) : ((nameInput && nameInput.value) || null))
+        });
       } catch (e) {
-        try { await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid || null, customer: (nameInput && nameInput.value) || customerParam || null }); } catch {}
+        try { 
+          await setDoc(sessionRef, { 
+            state: serializeAppState(), 
+            updatedAt: serverTimestamp(), 
+            lastWriter: uid || null, 
+            customer: (hasCustomerParam ? (customerParam || null) : ((nameInput && nameInput.value) || null))
+          }); 
+        } catch {}
       } finally {
         writeGuard = false;
       }
@@ -2105,14 +2138,16 @@ function generateReport(){
 
   const dd = document.getElementById("downtimeDuration");
   if (dd) dd.addEventListener("change", scheduleSync);
-  if (nameInput) nameInput.addEventListener("change", () => {
-    const url2 = new URL(window.location.href);
-    url2.searchParams.set("customer", nameInput.value || "default");
-    history.replaceState(null, "", url2.toString());
-    const badge = document.getElementById("rt-customer");
-    if (badge) badge.textContent = nameInput.value || "default";
-    scheduleSync();
-  });
+  if (nameInput && !hasCustomerParam) {
+    nameInput.addEventListener("change", () => {
+      const url2 = new URL(window.location.href);
+      url2.searchParams.set("customer", nameInput.value || "default");
+      history.replaceState(null, "", url2.toString());
+      const badge = document.getElementById("rt-customer");
+      if (badge) badge.textContent = nameInput.value || "default";
+      scheduleSync();
+    });
+  }
 
   onSnapshot(sessionRef, (snap) => {
     const data = snap.data();

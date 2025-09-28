@@ -1,7 +1,13 @@
-# DTracker (GitHub Pages + Firebase) — ?customer parameter
+# DTracker (GitHub Pages + Firebase) — ?customer with locked UI
 
-1) Commit these to the repo root: `index.html`, `service-worker.js`, `manifest.webmanifest`, `.nojekyll`, `404.html`.
+- If the URL includes `?customer=XYZ`, the **Customer Name** input is **read-only** (🔒) and the session syncs to `sessions/xyz`.
+- If there’s **no** param, you can type a name and the URL will update and start syncing to that customer key.
+
+## Deploy
+1) Add these files to your repo root: `index.html`, `service-worker.js`, `manifest.webmanifest`, `.nojekyll`, `404.html`.
 2) Settings → Pages → Source: `main` (root).
-3) Open `https://<user>.github.io/<repo>/?customer=ACME` and share that link.
-4) In Firebase: enable **Anonymous** auth and create **Firestore**.
-5) Use the starter rules in README to allow authenticated writes and public reads.
+3) Open: `https://<user>.github.io/<repo>/?customer=SNP` and share that link.
+
+## Firebase
+- Enable **Authentication → Anonymous**
+- Create **Firestore** (starter rules allow public reads + authenticated writes)
