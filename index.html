@@ -2122,7 +2122,6 @@ function generateReport(){
   });
 
   ["click","change","input"].forEach(evt => document.addEventListener(evt, scheduleSync, true));
-
   setInterval(() => pushStateIfChanged("interval"), 1000);
 
   onSnapshot(sessionRef, (snap) => {
