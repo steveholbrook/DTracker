@@ -15,9 +15,11 @@
   <div><b>Last session state:</b> <pre id="state" style="max-height:220px;overflow:auto">—</pre></div>
 </div>
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  const [{ initializeApp }, { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp, collection }, { getAuth, signInAnonymously, onAuthStateChanged }] = await Promise.all([
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"),
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"),
+  ]);
 
   const firebaseConfig = {
     apiKey: "AIzaSyAredpIvTx0c7uxn23HZoD3YkTgcG4cHbk",

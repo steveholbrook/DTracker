@@ -1959,11 +1959,30 @@ function generateReport(){
 </script>
 
 
-<!-- === Firebase realtime sync (listen-first): presence doc ID = plain UID === -->
+<!-- === Bridge classic script: expose AppState & hook functions to window === -->
+<script>
+  try {
+    if (typeof AppState !== 'undefined') {
+      window._AppStateRef = AppState;
+    }
+  } catch (e) {}
+
+  (function(){
+    const names = ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility","updateScheduleTime","updateDurationTime","toggleCompleted","startTimeline","startTimer","updateTimeline","renderRunbookTable"];
+    names.forEach(n => {
+      try { if (typeof window[n] !== "function" && typeof eval(n) === "function") { window[n] = eval(n); } } catch(_){}
+    });
+  })();
+</script>
+
+
+<!-- === Firebase realtime sync (listen-first) — uses window._AppStateRef === -->
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  const [{ initializeApp }, { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection }, { getAuth, signInAnonymously, onAuthStateChanged }] = await Promise.all([
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"),
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"),
+  ]);
 
   const firebaseConfig = {
     apiKey: "AIzaSyAredpIvTx0c7uxn23HZoD3YkTgcG4cHbk",
@@ -1979,7 +1998,6 @@ function generateReport(){
   const db = getFirestore(app);
   const auth = getAuth(app);
 
-  // Resolve customer
   const url = new URL(window.location.href);
   let customerParam = url.searchParams.get("customer") || "";
   const nameInput = document.getElementById("customerName");
@@ -1989,7 +2007,6 @@ function generateReport(){
   if (!url.searchParams.get("customer")) { url.searchParams.set("customer", customerParam || "default"); history.replaceState(null, "", url.toString()); }
   if (nameInput && customerParam) nameInput.value = customerParam;
 
-  // Overlay
   (function overlay(){
     const box = document.createElement("div");
     box.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:99999;";
@@ -2006,7 +2023,6 @@ function generateReport(){
     };
   })();
 
-  // ---- Auth then Presence (plain UID) ----
   await signInAnonymously(auth);
   const uid = await new Promise((resolve) => onAuthStateChanged(auth, (u)=>{ if(u){ resolve(u.uid); } }));
   const presenceRef = doc(db, "sessions", customerKey, "presence", uid);
@@ -2018,94 +2034,103 @@ function generateReport(){
   setInterval(upsertPresence, 20000);
   window.addEventListener("beforeunload", async () => { try{ await setDoc(presenceRef, { lastActive: serverTimestamp(), leftAt: serverTimestamp() }, { merge:true }); }catch{} });
 
-  // Show online
   onSnapshot(collection(db, "sessions", customerKey, "presence"), (snap) => {
     const now = Date.now(); let online=0;
     snap.forEach(d => { const t=d.data().lastActive?.toMillis?.()||0; if (now - t < 45000) online++; });
     const el = document.getElementById("rt-online"); if (el) el.textContent = `${online} online`;
   });
 
-  // ---- Session state (listen-first; no initial overwrite) ----
   const sessionRef = doc(db, "sessions", customerKey);
   const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
-  await sleep(200); // let app boot
+  await sleep(200);
+
+  function getStateSource(){ return window._AppStateRef || null; }
 
   function serializeAppState(){
+    const S = getStateSource();
+    if (!S) {
+      const st = (document.getElementById('statusText')?.textContent||'').toLowerCase();
+      const started = /in progress|running/.test(st);
+      return {
+        runbooks: [],
+        downtimeStarted: started,
+        downtimeStartTime: null,
+        downtimeDuration: parseInt(document.getElementById('downtimeDuration')?.value) || 24,
+        downtimePaused: /paused/.test(st),
+        pausedDuration: 0
+      };
+    }
     return {
-      runbooks: (window.AppState?.runbooks || []).map(r=>({...r})),
-      downtimeStarted: !!window.AppState?.downtimeStarted,
-      downtimeStartTime: window.AppState?.downtimeStartTime ? window.AppState.downtimeStartTime.toISOString() : null,
-      downtimeDuration: window.AppState?.downtimeDuration ?? 24,
-      downtimePaused: !!window.AppState?.downtimePaused,
-      pausedDuration: window.AppState?.pausedDuration ?? 0
+      runbooks: Array.isArray(S.runbooks) ? S.runbooks.map(r=>({...r})) : [],
+      downtimeStarted: !!S.downtimeStarted,
+      downtimeStartTime: S.downtimeStartTime ? (S.downtimeStartTime.toISOString ? S.downtimeStartTime.toISOString() : new Date(S.downtimeStartTime).toISOString()) : null,
+      downtimeDuration: typeof S.downtimeDuration === "number" ? S.downtimeDuration : (parseInt(document.getElementById('downtimeDuration')?.value) || 24),
+      downtimePaused: !!S.downtimePaused,
+      pausedDuration: typeof S.pausedDuration === "number" ? S.pausedDuration : 0
     };
   }
-  function applyRemoteState(s){
-    if (!window.AppState) return;
-    Object.assign(window.AppState, {
-      runbooks: Array.isArray(s.runbooks) ? s.runbooks : [],
-      downtimeStarted: !!s.downtimeStarted,
-      downtimeDuration: typeof s.downtimeDuration === "number" ? s.downtimeDuration : 24,
-      downtimePaused: !!s.downtimePaused,
-      pausedDuration: typeof s.pausedDuration === "number" ? s.pausedDuration : 0,
-      downtimeStartTime: s.downtimeStartTime ? new Date(s.downtimeStartTime) : null
-    });
+
+  function applyRemoteState(state){
+    const S = getStateSource();
+    if (!S) return;
+    S.runbooks = Array.isArray(state.runbooks) ? state.runbooks : [];
+    S.downtimeStarted = !!state.downtimeStarted;
+    S.downtimeDuration = typeof state.downtimeDuration === "number" ? state.downtimeDuration : 24;
+    S.downtimePaused = !!state.downtimePaused;
+    S.pausedDuration = typeof state.pausedDuration === "number" ? state.pausedDuration : 0;
+    S.downtimeStartTime = state.downtimeStartTime ? new Date(state.downtimeStartTime) : null;
+
     try {
       if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
       if (typeof window.updateTimeline === "function") window.updateTimeline();
       if (typeof window.updateClock === "function") window.updateClock();
-    } catch {}
+    } catch (e) {}
   }
 
-  // Prepare sync guards
-  let initialApplied = false;   // becomes true after first snapshot
-  let createdSession = false;   // set true only if we create the doc
+  let initialApplied = false;
   let writing = false;
   let lastSent = null;
 
-  // Ensure session doc exists OR fetch existing without writing
   try {
-    const snap = await getDoc(sessionRef);
-    if (!snap.exists()) {
-      // Create brand new with local initial state
-      await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid }, { merge:true });
-      createdSession = true;
-    }
-  } catch(e){ console.error("[session] ensure/fetch failed:", e); }
+    const s = await getDoc(sessionRef);
+    if (!s.exists()) await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid }, { merge:true });
+  } catch(e){ console.error("[session] ensure failed:", e); }
 
-  // Subscribe to remote; apply first, then enable pushing
   onSnapshot(sessionRef, (snap) => {
-    const data = snap.data() || {};
-    if (data.state) applyRemoteState(data.state);
-
-    // After the very first snapshot, set lastSent to what we have locally (to avoid overwriting)
+    const data = snap.data();
+    if (data?.state) applyRemoteState(data.state);
     if (!initialApplied) {
       initialApplied = true;
       try { lastSent = JSON.stringify(serializeAppState()); } catch {}
     }
   });
 
-  // Debounced / periodic pushes (only after initialApplied)
   async function push(reason="debounce"){
-    if (!initialApplied) return; // listen-first: don't write until we have a snapshot
-    try{
+    if (!initialApplied) return;
+    try {
       const nowJson = JSON.stringify(serializeAppState());
       if (nowJson === lastSent || writing) return;
       writing = true;
       await updateDoc(sessionRef, { state: JSON.parse(nowJson), updatedAt: serverTimestamp(), lastWriter: uid, reason });
       lastSent = nowJson;
-    }catch(e){
-      try{
+    } catch (e) {
+      try {
         await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid, reason }, { merge:true });
         lastSent = JSON.stringify(serializeAppState());
-      }catch(e2){ console.error("[session] write failed:", e2); }
-    }finally{ writing=false; }
+      } catch (e2) { console.error("[session] write failed:", e2); }
+    } finally { writing = false; }
   }
+
   let timer=null;
   function schedule(){ clearTimeout(timer); timer = setTimeout(()=>push("debounce"), 250); }
 
   ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility","updateScheduleTime","updateDurationTime","toggleCompleted","startTimeline","startTimer"]
-    .forEach(fn => { const orig = window[fn]; if (typeof orig==="function"){ window[fn]=function(...a){ const r=orig.apply(this,a); schedule(); return r; }; } });
+    .forEach(fn => {
+      const orig = window[fn];
+      if (typeof orig === "function") {
+        window[fn] = function(...a){ const r = orig.apply(this, a); schedule(); return r; };
+      }
+    });
 
   ["click","change","input"].forEach(evt => document.addEventListener(evt, schedule, true));
   setInterval(()=>push("interval"), 1000);
