@@ -1959,7 +1959,7 @@ function generateReport(){
 </script>
 
 
-<!-- === Firebase realtime sync (listen-first) — NO-TAKEOVER variant === -->
+<!-- === Firebase realtime sync (listen-first) — NO-TAKEOVER + FIELD LOCKS === -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -1984,13 +1984,14 @@ function generateReport(){
   let customerParam = url.searchParams.get("customer") || "";
   const viewerForced = url.searchParams.get("viewer") === "1";
   const nameInput = document.getElementById("customerName");
+  const phaseInput = document.getElementById("transformCycle");
   if (!customerParam && nameInput && nameInput.value) customerParam = nameInput.value;
   const toKey = s => (s||"default").toString().trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"") || "default";
   const customerKey = toKey(customerParam);
   if (!url.searchParams.get("customer")) { url.searchParams.set("customer", customerParam || "default"); history.replaceState(null, "", url.toString()); }
   if (nameInput && customerParam) nameInput.value = customerParam;
 
-  // Overlay (mode + online) — no takeover UI
+  // Overlay (mode + online)
   (function overlay(){
     const box = document.createElement("div");
     box.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:99999;min-width:220px";
@@ -2033,15 +2034,41 @@ function generateReport(){
 
   // Safe access to app state
   function S(){ return window._AppStateRef || window.AppState || (window._AppStateRef = { runbooks:[], downtimeStarted:false, downtimePaused:false, pausedDuration:0, downtimeDuration:24, downtimeStartTime:null }); }
+
+  // Apply read-only style to specific fields
+  function lockFieldsForStarted(started){
+    const lock = (el, yes) => {
+      if (!el) return;
+      if (yes) {
+        el.setAttribute("disabled","true");
+        el.style.pointerEvents = "none";
+        el.style.opacity = "0.7";
+        el.title = "Locked while timeline is running";
+      } else {
+        el.removeAttribute("disabled");
+        el.style.pointerEvents = "";
+        el.style.opacity = "";
+        el.title = "";
+      }
+    };
+    lock(document.getElementById("customerName"), !!started);
+    lock(document.getElementById("transformCycle"), !!started);
+  }
+
   function serialize(){
     const s = S();
+    // also capture UI fields so they mirror everywhere
+    const cn = (document.getElementById("customerName") || {}).value || "";
+    const tp = (document.getElementById("transformCycle") || {}).value || "";
     return {
       runbooks: (s.runbooks || []).map(r=>({...r})),
       downtimeStarted: !!s.downtimeStarted,
       downtimeStartTime: s.downtimeStartTime ? new Date(s.downtimeStartTime).toISOString() : null,
       downtimeDuration: s.downtimeDuration ?? 24,
       downtimePaused: !!s.downtimePaused,
-      pausedDuration: s.pausedDuration ?? 0
+      pausedDuration: s.pausedDuration ?? 0,
+      customerName: cn,
+      transformCycle: tp
     };
   }
   function applyRemoteState(st){
@@ -2054,6 +2081,16 @@ function generateReport(){
       pausedDuration: typeof st.pausedDuration === "number" ? st.pausedDuration : 0,
       downtimeStartTime: st.downtimeStartTime ? new Date(st.downtimeStartTime) : null
     });
+
+    // Mirror UI fields to local controls
+    const cn = document.getElementById("customerName");
+    const tp = document.getElementById("transformCycle");
+    if (cn && typeof st.customerName === "string" && cn.value !== st.customerName) cn.value = st.customerName;
+    if (tp && typeof st.transformCycle === "string" && tp.value !== st.transformCycle) tp.value = st.transformCycle;
+
+    // Lock fields if timeline started
+    lockFieldsForStarted(!!st.downtimeStarted);
+
     try{
       if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
       if (typeof window.updateTimeline === "function") window.updateTimeline();
@@ -2071,22 +2108,23 @@ function generateReport(){
   function setReadOnlyUI(ro){
     const modeEl = document.getElementById("rt-mode");
     if (modeEl) modeEl.textContent = ro ? "mode: VIEWER" : "mode: HOST";
-    const disable = (el) => {
-      if (!el) return;
-      if (el.id === "rt-copy") return;
-      el.setAttribute("disabled","true");
-      el.style.pointerEvents = "none";
-      el.style.opacity = "0.6";
-    };
-    const enable = (el) => {
-      if (!el) return;
-      if (el.id === "rt-copy") return;
-      el.removeAttribute("disabled");
-      el.style.pointerEvents = "";
-      el.style.opacity = "";
-    };
     const nodes = document.querySelectorAll("button, input, select, textarea");
-    nodes.forEach(ro ? disable : enable);
+    nodes.forEach(el => {
+      if (!el) return;
+      if (el.id === "rt-copy") return;
+      if (ro) {
+        el.setAttribute("disabled","true");
+        el.style.pointerEvents = "none";
+        el.style.opacity = "0.6";
+      } else {
+        el.removeAttribute("disabled");
+        el.style.pointerEvents = "";
+        el.style.opacity = "";
+      }
+    });
+    // Re-apply specific locks based on current state
+    const cur = S();
+    lockFieldsForStarted(!!cur.downtimeStarted);
   }
 
   function canWrite(){ return !viewerForced && remoteController === uid; }
@@ -2103,11 +2141,11 @@ function generateReport(){
     remoteController = data.controllerUid || null;
     if (data.state) applyRemoteState(data.state);
 
-    // If no controller yet, try once to claim (first writer wins). Rules will prevent changes later.
+    // First writer claims controller if none
     if (!remoteController && !controllerAttempted && !viewerForced) {
       controllerAttempted = true;
       try { await setDoc(sessionRef, { controllerUid: uid, controllerSetAt: serverTimestamp() }, { merge:true }); }
-      catch (e) { /* ignore; another tab probably won */ }
+      catch (e) { /* someone else won; ignore */ }
     }
 
     setReadOnlyUI(!canWrite());
@@ -2118,7 +2156,7 @@ function generateReport(){
     }
   });
 
-  // Push (only host; never sets controllerUid after it's set)
+  // Push (only host)
   async function push(reason="debounce"){
     if (!initialApplied || !canWrite()) return;
     try{
@@ -2142,11 +2180,21 @@ function generateReport(){
   ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility","updateScheduleTime","updateDurationTime","toggleCompleted","startTimeline","startTimer"]
     .forEach(fn => { const orig = window[fn]; if (typeof orig==="function"){ window[fn]=function(...a){ const r=orig.apply(this,a); schedule(); return r; }; } });
 
+  // Also push when specific fields change (only if still editable)
+  const watch = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("change", schedule, true);
+    el.addEventListener("input", schedule, true);
+  };
+  watch("customerName");
+  watch("transformCycle");
+
   ["click","change","input"].forEach(evt => document.addEventListener(evt, schedule, true));
   setInterval(()=>push("interval"), 1000);
 </script>
 
-<!-- Bridge so module code can see AppState if declared with const in classic scripts -->
+<!-- Bridge for classic scripts -->
 <script>
   try { if (typeof AppState !== "undefined") window._AppStateRef = AppState; } catch (e) {}
 </script>
