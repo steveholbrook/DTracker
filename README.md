@@ -1,13 +1,30 @@
-# How to run on GitHub Pages with Firebase (beginner)
+# DTracker on GitHub Pages (customer param + Firebase)
 
-1) **Create a new GitHub repo** and add these files (`index.html`, `.nojekyll`, `404.html`).
-2) **Enable GitHub Pages**: Repo → Settings → Pages → Branch: `main` (root).
-3) **Open your site** with a room in the URL, e.g.  
-   `https://<your-user>.github.io/<your-repo>/?room=demo`
-4) **Share that exact link**. Everyone on the same `?room=...` sees the same timeline, notes, and runbook.
-5) Make sure in Firebase you have:
-   - **Authentication → Anonymous** enabled
-   - **Firestore** created (test rules OK for a quick trial)
-6) (Optional) Tighten Firestore rules later (see prior message).
+Open with a customer parameter:
+`https://<user>.github.io/<repo>/?customer=ACME`
 
-The Firebase config block inside `index.html` uses your provided project settings.
+Everyone on the same `?customer=ACME` sees identical state.
+
+Steps:
+1) Commit these files to the repo root (`index.html`, `service-worker.js`, `manifest.webmanifest`, `.nojekyll`, `404.html`).
+2) Settings → Pages → Source: `main` (root).
+3) Ensure Firebase Authentication: **Anonymous** is enabled, and **Firestore** is created.
+4) Share your app link with a `?customer=` param.
+
+Starter Firestore rules:
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /sessions/{customer} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /sessions/{customer}/presence/{uid} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}
+```

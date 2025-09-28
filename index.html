@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Technical Downtime Tracking App</title>
+  <!-- PWA manifest and theme color -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <!-- Theme color influences the browser address bar and OS chrome when the app is installed -->
+  <meta name="theme-color" content="#0a6ed1">
 <style>
   :root{
     --sap-shell-bg:#f7f7f7;
@@ -768,6 +772,19 @@
     border-right:1px solid #e5e5e5;
   }
 </style>
+
+  <!--
+    Microsoft Teams JavaScript SDK v2: Include this script to enable
+    integration as a Teams tab.  Calling microsoftTeams.app.initialize()
+    allows the page to run inside the Teams client and ensures that
+    links opened via microsoftTeams.app.openLink stay within Teams.
+    See: https://learn.microsoft.com/en-us/javascript/api/@microsoft/teams-js/app?view=msteams-client-js-latest#@microsoft-teams-js-app-openlink
+  -->
+  <script
+    src="https://res.cdn.office.net/teams-js/2.0.0/js/MicrosoftTeams.min.js"
+    integrity="sha384-QtTBFeFlfRDZBfwHJHYQp7MdLJ2C3sfAEB1Qpy+YblvjavBye+q87TELpTnvlXw4"
+    crossorigin="anonymous">
+  </script>
 </head>
 <body>
   <div class="app-header">
@@ -794,9 +811,24 @@
     <!-- Customer Information -->
     <div class="panel" style="margin-bottom:16px;padding:16px;">
       <div class="field-row">
+        <!-- Customer name field -->
         <div class="field" style="flex:1;">
           <label>Customer Name *</label>
           <input type="text" id="customerName" placeholder="Enter customer name" value="ACME Corporation">
+        </div>
+        <!-- Transform cycle selector as requested.  This allows users to
+             choose the type of transform being executed.  The options
+             provided match the user’s specification: Test Migration,
+             Go Live Simulation and Go‑Live.  We assign an id so the
+             selection can be referenced in scripts if needed in the
+             future. -->
+        <div class="field" style="flex:1;">
+          <label>Transform Cycle</label>
+          <select id="transformCycle">
+            <option value="Test Migration">Test Migration</option>
+            <option value="Go Live Simulation">Go Live Simulation</option>
+            <option value="Go-Live">Go‑Live</option>
+          </select>
         </div>
       </div>
     </div>
@@ -894,10 +926,13 @@
       <table class="table" id="runbookTable">
         <thead>
           <tr>
-            <th style="width:100px;">Sequence</th>
-            <th style="width:150px;">Strategy</th>
-            <th style="width:150px;">Phase</th>
-            <th>Runblock</th>
+            <th style="width:80px;">Sequence</th>
+            <th style="width:130px;">Strategy</th>
+            <th style="width:130px;">Phase</th>
+            <!-- Runblock name shortened to make room for responsibility column -->
+            <th style="width:160px;">Runblock</th>
+            <!-- New responsibility column as per requirements -->
+            <th style="width:220px;">Responsibility</th>
             <th style="width:80px;text-align:center;">Actions</th>
           </tr>
         </thead>
@@ -928,6 +963,18 @@
   </div>
 
 <script>
+// Initialize Microsoft Teams if running inside Teams.  When hosted on a custom
+// domain (like SharePoint), provide the domain in the validMessageOrigins
+// array to allow cross‑frame messaging.  This ensures the app loads inside
+// Teams instead of a new browser tab and allows us to open external links
+// within the Teams client via app.openLink.
+if (typeof microsoftTeams !== 'undefined' && microsoftTeams.app && typeof microsoftTeams.app.initialize === 'function') {
+  const validOrigins = ['https://snpcom.sharepoint.com'];
+  microsoftTeams.app.initialize(validOrigins).catch(() => {
+    console.warn('Teams initialization failed or not running inside Teams');
+  });
+}
+
 // Global state
 const AppState = {
   runbooks: [],
@@ -1035,6 +1082,8 @@ function addRunbookRow() {
     strategy: STRATEGIES[0], // 'Export'
     phase: PHASES[0], // 'Tables' - EXPLICITLY set from PHASES array
     runblock: '', // EMPTY string - no runblock name by default
+    // Responsibility is an optional field to indicate who owns this runblock.
+    responsibility: '',
     scheduleHours: 0,
     scheduleMinutes: 0,
     durationHours: 1,
@@ -1060,28 +1109,38 @@ function renderRunbookTable() {
   
   AppState.runbooks.forEach(runbook => {
     const row = document.createElement('tr');
+    // Determine if editing of model parameters should be disabled.  When
+    // downtime has started and is not paused, inputs and selects are
+    // disabled to prevent accidental modification.  Otherwise they remain
+    // editable.  This logic does not apply to the timeline controls.
+    const editingDisabled = (AppState.downtimeStarted && !AppState.downtimePaused) ? 'disabled' : '';
     row.innerHTML = `
       <td>
         <input type="number" min="1" max="30" value="${runbook.sequence}" 
-               style="width:60px;" onchange="updateSequence(${runbook.id}, this.value)">
+               style="width:60px;" onchange="updateSequence(${runbook.id}, this.value)" ${editingDisabled}>
       </td>
       <td>
-        <select onchange="updateStrategy(${runbook.id}, this.value)">
+        <select onchange="updateStrategy(${runbook.id}, this.value)" ${editingDisabled}>
           ${STRATEGIES.map(s => `<option value="${s}" ${runbook.strategy === s ? 'selected' : ''}>${s}</option>`).join('')}
         </select>
       </td>
       <td>
-        <select onchange="updatePhase(${runbook.id}, this.value)">
+        <select onchange="updatePhase(${runbook.id}, this.value)" ${editingDisabled}>
           ${PHASES.map(p => `<option value="${p}" ${runbook.phase === p ? 'selected' : ''}>${p}</option>`).join('')}
         </select>
       </td>
       <td>
         <input type="text" value="${runbook.runblock}" placeholder="Enter runblock name" 
                maxlength="50" style="width:100%;"
-               onchange="updateRunblock(${runbook.id}, this.value)">
+               onchange="updateRunblock(${runbook.id}, this.value)" ${editingDisabled}>
+      </td>
+      <td>
+        <input type="text" value="${runbook.responsibility || ''}" placeholder="Enter responsibility" 
+               maxlength="40" style="width:100%;"
+               onchange="updateResponsibility(${runbook.id}, this.value)" ${editingDisabled}>
       </td>
       <td class="center">
-        <button class="btn small danger" onclick="removeRunbook(${runbook.id})">Remove</button>
+        <button class="btn small danger" onclick="removeRunbook(${runbook.id})" ${editingDisabled}>Remove</button>
       </td>
     `;
     tbody.appendChild(row);
@@ -1143,6 +1202,19 @@ function updateRunblock(id, value) {
     
     // DO NOT modify phase field
     updateTimeline();
+  }
+}
+
+// Update the responsibility for a given runbook.  Responsibility
+// indicates who is accountable for executing the runblock.  This does
+// not directly affect the timeline but is stored for export and
+// reference.  It is not modifiable once downtime has started unless
+// the process is paused.  We do not trigger a timeline refresh here
+// because the responsibility does not change scheduling.
+function updateResponsibility(id, value) {
+  const runbook = AppState.runbooks.find(r => r.id === id);
+  if (runbook) {
+    runbook.responsibility = value;
   }
 }
 
@@ -1290,40 +1362,57 @@ function createTimelineRow(runbook, index) {
 function createTimelineControlRow(runbook) {
   const row = document.createElement('div');
   row.className = 'timeline-control-row';
+  // Determine whether start/duration should be rendered as editable inputs or
+  // static text.  We no longer disable editing when downtime is running;
+  // instead, inputs remain editable until the runblock is marked complete.
+  // Once completed, the values become display‑only text.  The completion
+  // checkbox still respects the downtime state (disabled when downtime is
+  // not active).
+
   // Start Time cell
   const startCell = document.createElement('div');
   startCell.className = 'timeline-control-cell start-cell';
   if (runbook.completed) {
+    // Once completed, display the scheduled start time as static text
     const span = document.createElement('span');
     span.textContent = `${String(runbook.scheduleHours).padStart(2,'0')}:${String(runbook.scheduleMinutes).padStart(2,'0')}`;
     startCell.appendChild(span);
   } else {
+    // Before completion, expose an input field to set the start time (HH:MM)
     const input = document.createElement('input');
     input.type = 'text';
+    // Accept up to 3-digit hours and 2-digit minutes in HH:MM format
     input.pattern = '[0-9]{1,3}:[0-9]{2}';
     input.placeholder = 'HH:MM';
     input.value = `${String(runbook.scheduleHours).padStart(2,'0')}:${String(runbook.scheduleMinutes).padStart(2,'0')}`;
+    // Update the runbook when the user changes the time
     input.onchange = function() { updateScheduleTime(runbook.id, this.value); };
+    // Inputs remain enabled until the runblock is completed
     startCell.appendChild(input);
   }
   row.appendChild(startCell);
+
   // Duration cell
   const durationCell = document.createElement('div');
   durationCell.className = 'timeline-control-cell duration-cell';
   if (runbook.completed) {
+    // Show static duration after completion
     const span = document.createElement('span');
     span.textContent = `${String(runbook.durationHours).padStart(2,'0')}:${String(runbook.durationMinutes).padStart(2,'0')}`;
     durationCell.appendChild(span);
   } else {
+    // Provide an input to adjust duration (HH:MM)
     const input = document.createElement('input');
     input.type = 'text';
     input.pattern = '[0-9]{1,3}:[0-9]{2}';
     input.placeholder = 'HH:MM';
     input.value = `${String(runbook.durationHours).padStart(2,'0')}:${String(runbook.durationMinutes).padStart(2,'0')}`;
     input.onchange = function() { updateDurationTime(runbook.id, this.value); };
+    // Inputs remain enabled until the runblock is completed
     durationCell.appendChild(input);
   }
   row.appendChild(durationCell);
+
   // Complete cell with checkbox
   const completeCell = document.createElement('div');
   completeCell.className = 'timeline-control-cell complete-cell';
@@ -1332,6 +1421,8 @@ function createTimelineControlRow(runbook) {
   checkbox.className = 'timeline-checkbox';
   checkbox.checked = runbook.completed;
   checkbox.title = 'Mark as completed';
+  // Disable the checkbox when downtime is not actively running (either paused or not started)
+  checkbox.disabled = !(AppState.downtimeStarted && !AppState.downtimePaused);
   checkbox.onchange = function() { toggleCompleted(runbook.id, this.checked); };
   completeCell.appendChild(checkbox);
   row.appendChild(completeCell);
@@ -1539,6 +1630,12 @@ function startDowntime() {
   currentLine.style.left = '0px';
   
   updateProgressIndicators();
+
+  // When downtime starts, regenerate the timeline and runbook table so that
+  // completion checkboxes become enabled and start/duration inputs become
+  // read-only.  Also disable editing of model parameters.
+  updateTimeline();
+  renderRunbookTable();
 }
 
 function pauseDowntime() {
@@ -1552,6 +1649,11 @@ function pauseDowntime() {
       <button class="btn primary" onclick="resumeDowntime()">▶ Resume</button>
       <button class="btn danger" onclick="stopDowntime()">⏹ Stop</button>
     `;
+
+    // Regenerate timeline and runbook table to disable completion checkboxes
+    // and re-enable start/duration inputs and model parameter editing when paused.
+    updateTimeline();
+    renderRunbookTable();
   }
 }
 
@@ -1569,6 +1671,11 @@ function resumeDowntime() {
       <button class="btn warning" onclick="pauseDowntime()">⏸ Pause</button>
       <button class="btn danger" onclick="stopDowntime()">⏹ Stop</button>
     `;
+
+    // When resuming from pause, regenerate the timeline and runbook table
+    // so that completion checkboxes are enabled and inputs become read-only again
+    updateTimeline();
+    renderRunbookTable();
   }
 }
 
@@ -1595,6 +1702,8 @@ function stopDowntime() {
     
     // Refresh timeline to remove completion checkboxes
     updateTimeline();
+    // Re-enable editing of model parameters once downtime has stopped
+    renderRunbookTable();
   }
 }
 
@@ -1632,11 +1741,13 @@ function updateProgressIndicators() {
 }
 
 function downloadExcel() {
+  // Include responsibility in the exported CSV so users can track who owns each runblock
   const data = AppState.runbooks.map(r => ({
     Sequence: r.sequence,
     Strategy: r.strategy,
     Phase: r.phase,
     Runblock: r.runblock,
+    Responsibility: r.responsibility || '',
     ScheduleTime: `${String(r.scheduleHours).padStart(2,'0')}:${String(r.scheduleMinutes).padStart(2,'0')}`,
     Duration: `${String(r.durationHours).padStart(2,'0')}:${String(r.durationMinutes).padStart(2,'0')}`,
     Completed: r.completed ? 'Yes' : 'No'
@@ -1695,6 +1806,8 @@ function uploadExcel(event) {
             strategy: values[headers.indexOf('Strategy')] || STRATEGIES[0],
             phase: values[headers.indexOf('Phase')] || PHASES[0],
             runblock: values[headers.indexOf('Runblock')] || '',
+            // Responsibility may not be present in older files; default to empty string
+            responsibility: values[headers.indexOf('Responsibility')] || '',
             scheduleHours: scheduleHours || 0,
             scheduleMinutes: scheduleMinutes || 0,
             durationHours: durationHours || 1,
@@ -1723,7 +1836,7 @@ function uploadExcel(event) {
 </script>
 
 
-<!-- === Realtime Sync (Firebase) for multi-user viewing === -->
+<!-- === Realtime Sync (Firebase) — keyed by ?customer=NAME === -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -1744,19 +1857,25 @@ function uploadExcel(event) {
   const auth = getAuth(app);
 
   const url = new URL(window.location.href);
-  let roomId = url.searchParams.get("room") || "default";
-  if (!url.searchParams.get("room")) {
-    url.searchParams.set("room", roomId);
+  let customerParam = url.searchParams.get("customer") || "";
+  const nameInput = document.getElementById("customerName");
+  if (!customerParam && nameInput && nameInput.value) customerParam = nameInput.value;
+  function toKey(s) { return (s || "default").toString().trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "default"; }
+  const customerKey = toKey(customerParam);
+  if (!url.searchParams.get("customer")) {
+    url.searchParams.set("customer", customerParam || "default");
     history.replaceState(null, "", url.toString());
   }
+  if (nameInput && customerParam) { nameInput.value = customerParam; }
 
   const overlay = document.createElement("div");
-  overlay.style.cssText = "position:fixed; right:10px; bottom:10px; background:#fff; border:1px solid #dcdcdc; border-radius:8px; padding:10px 12px; font:12px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; box-shadow:0 2px 6px rgba(0,0,0,.08); z-index:99999;";
-  overlay.innerHTML = `<div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
-      <strong>Room:</strong><span id="rt-room" style="font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;">${roomId}</span>
-      <button id="rt-copy" style="margin-left:8px; padding:4px 8px; border:1px solid #ccc; border-radius:6px; cursor:pointer; background:#f9f9fb;">Copy link</button>
+  overlay.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:99999;";
+  overlay.innerHTML = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+      <strong>Customer:</strong>
+      <span id="rt-customer" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${customerParam || "default"}</span>
+      <button id="rt-copy" style="margin-left:8px;padding:4px 8px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#f9f9fb;">Copy link</button>
     </div>
-    <div><span id="rt-online" style="display:inline-block; padding:2px 8px; border:1px solid #dcdcdc; border-radius:999px;">0 online</span></div>`;
+    <div><span id="rt-online" style="display:inline-block;padding:2px 8px;border:1px solid #dcdcdc;border-radius:999px;">0 online</span></div>`;
   document.body.appendChild(overlay);
   document.getElementById("rt-copy").onclick = async () => {
     await navigator.clipboard.writeText(window.location.href);
@@ -1768,15 +1887,23 @@ function uploadExcel(event) {
   await signInAnonymously(auth);
   onAuthStateChanged(auth, (u) => { if (u) uid = u.uid; });
 
-  const sessionRef = doc(db, "sessions", roomId);
-  const presenceRef = doc(db, "sessions", roomId, "presence", "uid_" + (uid || "pending"));
-  const presenceCol = collection(db, "sessions", roomId, "presence");
+  const sessionRef = doc(db, "sessions", customerKey);
+  let presenceRef = doc(db, "sessions", customerKey, "presence", "uid_" + (uid || "pending"));
+  const presenceCol = collection(db, "sessions", customerKey, "presence");
 
   async function upsertPresence() {
     try {
-      await setDoc(presenceRef, { name: localStorage.getItem("displayName") || "Guest", lastActive: serverTimestamp() }, { merge: true });
+      await setDoc(presenceRef, { name: (nameInput && nameInput.value) || customerParam || "Guest", lastActive: serverTimestamp() }, { merge: true });
     } catch {}
   }
+  const uidTimer = setInterval(async () => {
+    if (auth.currentUser?.uid && presenceRef.id.endsWith("pending")) {
+      clearInterval(uidTimer);
+      presenceRef = doc(db, "sessions", customerKey, "presence", "uid_" + auth.currentUser.uid);
+      await upsertPresence();
+    }
+  }, 300);
+
   setInterval(upsertPresence, 20000);
   await upsertPresence();
   window.addEventListener("beforeunload", async () => {
@@ -1786,9 +1913,9 @@ function uploadExcel(event) {
   onSnapshot(presenceCol, (snap) => {
     const now = Date.now();
     let online = 0;
-    snap.forEach(docSnap => {
-      const d = docSnap.data();
-      const ts = d.lastActive && d.lastActive.toMillis ? d.lastActive.toMillis() : 0;
+    snap.forEach(d => {
+      const data = d.data();
+      const ts = data.lastActive && data.lastActive.toMillis ? data.lastActive.toMillis() : 0;
       if (now - ts < 45000) online++;
     });
     const el = document.getElementById("rt-online");
@@ -1829,11 +1956,10 @@ function uploadExcel(event) {
   }
 
   let writeGuard = false;
-
   async function ensureSessionDoc() {
     const snap = await getDoc(sessionRef);
     if (!snap.exists()) {
-      await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid || null });
+      await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid || null, customer: customerParam || null });
     }
   }
   await ensureSessionDoc();
@@ -1845,16 +1971,16 @@ function uploadExcel(event) {
     t = setTimeout(async () => {
       try {
         writeGuard = true;
-        await updateDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid || null });
+        await updateDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid || null, customer: (nameInput && nameInput.value) || customerParam || null });
       } catch (e) {
-        try { await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid || null }); } catch {}
+        try { await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid || null, customer: (nameInput && nameInput.value) || customerParam || null }); } catch {}
       } finally {
         writeGuard = false;
       }
     }, 300);
   }
 
-  const toPatch = ["addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateScheduleTime","updateDurationTime","toggleCompleted","startDowntime","pauseDowntime","resumeDowntime","stopDowntime"];
+  const toPatch = ["addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility","updateScheduleTime","updateDurationTime","toggleCompleted","startDowntime","pauseDowntime","resumeDowntime","stopDowntime"];
   toPatch.forEach(name => {
     const orig = window[name];
     if (typeof orig === "function") {
@@ -1868,6 +1994,14 @@ function uploadExcel(event) {
 
   const dd = document.getElementById("downtimeDuration");
   if (dd) dd.addEventListener("change", scheduleSync);
+  if (nameInput) nameInput.addEventListener("change", () => {
+    const url2 = new URL(window.location.href);
+    url2.searchParams.set("customer", nameInput.value || "default");
+    history.replaceState(null, "", url2.toString());
+    const badge = document.getElementById("rt-customer");
+    if (badge) badge.textContent = nameInput.value || "default";
+    scheduleSync();
+  });
 
   onSnapshot(sessionRef, (snap) => {
     const data = snap.data();
@@ -1877,6 +2011,18 @@ function uploadExcel(event) {
   });
 
   scheduleSync();
+</script>
+
+<!-- Register the service worker for Progressive Web App support -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('service-worker.js')
+        .catch(function(err) {
+          console.error('Service worker registration failed:', err);
+        });
+    });
+  }
 </script>
 
 </body>
