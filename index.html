@@ -771,6 +771,56 @@
     color:var(--sap-muted);
     border-right:1px solid #e5e5e5;
   }
+
+  /* Success/green button for Report */
+  .btn.success{
+    background:var(--sap-success);
+    color:#fff;
+    border-color:#0b6d34;
+  }
+  .btn.success:hover{
+    background:#0b6d34;
+  }
+
+  /* Orange diamond marker for Quality Gates */
+  .quality-diamond{
+    position:absolute;
+    width:14px;
+    height:14px;
+    background:#FF9800; /* match Quality Gate colour */
+    transform:rotate(45deg);
+    top:50%;
+    margin-top:-7px; /* center vertically in 20px row */
+    border-radius:2px;
+    box-shadow:0 1px 2px rgba(0,0,0,0.2);
+  }
+
+  /* Row holding legend (key) and Report button */
+  .legend-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    margin-top:12px;
+    padding-top:12px;
+    border-top:1px solid var(--sap-border);
+  }
+  .legend-row .legend{
+    margin:0;
+    padding:0;
+    border-top:none;
+  }
+
+  /* Print styles: show only the progress panel for the report */
+  @media print{
+    body *{ visibility:hidden !important; }
+    #progressPanel, #progressPanel *{ visibility:visible !important; }
+    #progressPanel{ position:relative; }
+    /* Hide the Report button itself in the printout */
+    #progressPanel #reportBtn{ display:none !important; }
+    .timeline-container{ overflow:visible !important; }
+  }
+
 </style>
 
   <!--
@@ -834,7 +884,7 @@
     </div>
     
     <!-- Progress Tracking Section -->
-    <div class="panel">
+    <div id="progressPanel" class="panel">
       <h2>Progress Tracking Window</h2>
       
       <div class="timeline-header">
@@ -915,6 +965,8 @@
           <div class="legend-color block-validation"></div>
           <span>Validation</span>
         </div>
+      
+        <button class="btn success" id="reportBtn" onclick="generateReport()" style="margin-left:auto">Report</button>
       </div>
     </div>
 
@@ -1320,7 +1372,6 @@ function createTimelineRow(runbook, index) {
   const row = document.createElement('div');
   row.className = 'timeline-row';
   
-  // Timeline Track (first) - width based on downtime duration
   const track = document.createElement('div');
   track.className = 'timeline-track';
   track.dataset.runbookId = runbook.id;
@@ -1328,33 +1379,55 @@ function createTimelineRow(runbook, index) {
   const pixelsPerHour = 60;
   const totalWidth = AppState.downtimeDuration * pixelsPerHour;
   track.style.width = `${totalWidth}px`;
-  
-  // Create block
-  const block = createTimelineBlock(runbook);
-  track.appendChild(block);
 
-  // If there is a runblock name, display it as an informational label to the right of the block
-  if (runbook.runblock) {
-    const nameLabel = document.createElement('div');
-    nameLabel.className = 'runblock-name';
-    nameLabel.textContent = runbook.runblock;
-    nameLabel.title = runbook.runblock; // Full text on hover
-    // Absolute positioning relative to the track
-    nameLabel.style.position = 'absolute';
-    nameLabel.style.top = '50%';
-    nameLabel.style.transform = 'translateY(-50%)';
-    const startPos = runbook.scheduleHours + (runbook.scheduleMinutes / 60);
-    const duration = runbook.durationHours + (runbook.durationMinutes / 60);
-    const blockWidth = Math.max(60, duration * pixelsPerHour - 4);
-    nameLabel.style.left = `${startPos * pixelsPerHour + blockWidth + 6}px`;
-    track.appendChild(nameLabel);
+  const isQualityGate = (runbook.strategy === 'Quality Gate');
+  const startPos = runbook.scheduleHours + (runbook.scheduleMinutes / 60);
+  const duration = runbook.durationHours + (runbook.durationMinutes / 60);
+  const startX = startPos * pixelsPerHour;
+
+  if (isQualityGate) {
+    const diamond = document.createElement('div');
+    diamond.className = 'quality-diamond';
+    diamond.style.left = `${Math.max(0, startX - 7)}px`;
+    if (runbook.completed) {
+      diamond.style.opacity = '0.5';
+      diamond.style.filter = 'grayscale(100%)';
+    }
+    track.appendChild(diamond);
+
+    if (runbook.runblock) {
+      const nameLabel = document.createElement('div');
+      nameLabel.className = 'runblock-name';
+      nameLabel.textContent = runbook.runblock;
+      nameLabel.style.position = 'absolute';
+      nameLabel.style.top = '50%';
+      nameLabel.style.transform = 'translateY(-50%)';
+      track.appendChild(nameLabel);
+      requestAnimationFrame(() => {
+        const w = nameLabel.offsetWidth || 0;
+        nameLabel.style.left = `${Math.max(0, startX - w - 8)}px`;
+      });
+    }
+  } else {
+    const block = createTimelineBlock(runbook);
+    track.appendChild(block);
+    if (runbook.runblock) {
+      const nameLabel = document.createElement('div');
+      nameLabel.className = 'runblock-name';
+      nameLabel.textContent = runbook.runblock;
+      nameLabel.title = runbook.runblock;
+      nameLabel.style.position = 'absolute';
+      nameLabel.style.top = '50%';
+      nameLabel.style.transform = 'translateY(-50%)';
+      const blockWidth = Math.max(60, duration * pixelsPerHour - 4);
+      nameLabel.style.left = `${startX + blockWidth + 6}px`;
+      track.appendChild(nameLabel);
+    }
   }
+
   row.appendChild(track);
-  // Attach drop zone listeners to this track so blocks can be dragged and dropped
   track.addEventListener('dragover', handleDragOver);
   track.addEventListener('drop', handleDrop);
-
-  // Controls are generated separately in createTimelineControlRow
   return row;
 }
 
@@ -1616,7 +1689,9 @@ function startDowntime() {
   document.getElementById('startTimeDisplay').textContent = startTimeStr;
   document.getElementById('endTimeDisplay').textContent = endTimeStr;
   document.getElementById('statusText').textContent = 'In Progress';
-  document.getElementById('statusText').style.color = 'var(--sap-success)';
+  document.getElementById('statusText').style.color = 'var(--sap-error)';
+  document.getElementById('statusText').style.color = 'var(--sap-error)';
+  document.getElementById('statusText').style.color = 'var(--sap-error)';
   
   // Update control buttons
   document.getElementById('downtimeControls').innerHTML = `
@@ -1665,7 +1740,9 @@ function resumeDowntime() {
     AppState.pauseStartTime = null;
     
     document.getElementById('statusText').textContent = 'In Progress';
-    document.getElementById('statusText').style.color = 'var(--sap-success)';
+  document.getElementById('statusText').style.color = 'var(--sap-error)';
+  document.getElementById('statusText').style.color = 'var(--sap-error)';
+    document.getElementById('statusText').style.color = 'var(--sap-error)';
     
     document.getElementById('downtimeControls').innerHTML = `
       <button class="btn warning" onclick="pauseDowntime()">⏸ Pause</button>
@@ -1833,6 +1910,40 @@ function uploadExcel(event) {
   // Reset file input
   event.target.value = '';
 }
+
+// Generate a printable report (use browser's Save as PDF).
+// Includes finish line and current duration line (if downtime started).
+function generateReport(){
+  // Ensure the current time line is visible for the snapshot if downtime is running
+  if (AppState.downtimeStarted) {
+    const ctl = document.getElementById('currentTimeLine');
+    if (ctl) ctl.style.display = 'block';
+    updateProgressIndicators();
+  }
+  // Add a simple header with customer and transform cycle above the timeline for print
+  const headerId = 'reportHeaderTemp';
+  let hdr = document.getElementById(headerId);
+  if (!hdr) {
+    const panel = document.getElementById('progressPanel');
+    hdr = document.createElement('div');
+    hdr.id = headerId;
+    hdr.style.marginBottom = '8px';
+    hdr.style.fontSize = '14px';
+    hdr.style.fontWeight = '600';
+    const cust = document.getElementById('customerName')?.value || '';
+    const cycle = document.getElementById('transformCycle')?.value || '';
+    const ts = new Date().toLocaleString();
+    hdr.textContent = `Customer: ${cust}   •   Transform Cycle: ${cycle}   •   Snapshot: ${ts}`;
+    panel.insertBefore(hdr, panel.firstChild.nextSibling); // just under the H2
+  } else {
+    const cust = document.getElementById('customerName')?.value || '';
+    const cycle = document.getElementById('transformCycle')?.value || '';
+    const ts = new Date().toLocaleString();
+    hdr.textContent = `Customer: ${cust}   •   Transform Cycle: ${cycle}   •   Snapshot: ${ts}`;
+  }
+  window.print();
+}
+
 </script>
 
 
