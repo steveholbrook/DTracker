@@ -1959,13 +1959,12 @@ function generateReport(){
 </script>
 
 
-<!-- === Firebase realtime sync: presence doc ID = plain UID (no prefix) === -->
+<!-- === Firebase realtime sync (listen-first): presence doc ID = plain UID === -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-  // Your Firebase project (from your message)
   const firebaseConfig = {
     apiKey: "AIzaSyAredpIvTx0c7uxn23HZoD3YkTgcG4cHbk",
     authDomain: "downtime-tracking-135f6.firebaseapp.com",
@@ -1980,7 +1979,7 @@ function generateReport(){
   const db = getFirestore(app);
   const auth = getAuth(app);
 
-  // Resolve customer from ?customer= (fallback: any #customerName input value)
+  // Resolve customer
   const url = new URL(window.location.href);
   let customerParam = url.searchParams.get("customer") || "";
   const nameInput = document.getElementById("customerName");
@@ -1990,7 +1989,7 @@ function generateReport(){
   if (!url.searchParams.get("customer")) { url.searchParams.set("customer", customerParam || "default"); history.replaceState(null, "", url.toString()); }
   if (nameInput && customerParam) nameInput.value = customerParam;
 
-  // Overlay (Customer + Online)
+  // Overlay
   (function overlay(){
     const box = document.createElement("div");
     box.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:99999;";
@@ -2007,40 +2006,32 @@ function generateReport(){
     };
   })();
 
-  // --- Anonymous Auth, then presence doc using **plain UID** ---
+  // ---- Auth then Presence (plain UID) ----
   await signInAnonymously(auth);
   const uid = await new Promise((resolve) => onAuthStateChanged(auth, (u)=>{ if(u){ resolve(u.uid); } }));
-
-  // Presence at /sessions/<customerKey>/presence/<UID>
   const presenceRef = doc(db, "sessions", customerKey, "presence", uid);
   async function upsertPresence(){
-    try {
-      await setDoc(presenceRef, {
-        name: (nameInput && nameInput.value) || customerParam || "Guest",
-        lastActive: serverTimestamp()
-      }, { merge: true });
-    } catch (e) { console.error("[presence] setDoc failed:", e); }
+    try { await setDoc(presenceRef, { name: (nameInput && nameInput.value) || customerParam || "Guest", lastActive: serverTimestamp() }, { merge: true }); }
+    catch(e){ console.error("[presence] setDoc failed:", e); }
   }
   await upsertPresence();
   setInterval(upsertPresence, 20000);
-  window.addEventListener("beforeunload", async () => {
-    try { await setDoc(presenceRef, { lastActive: serverTimestamp(), leftAt: serverTimestamp() }, { merge: true }); } catch {}
-  });
+  window.addEventListener("beforeunload", async () => { try{ await setDoc(presenceRef, { lastActive: serverTimestamp(), leftAt: serverTimestamp() }, { merge:true }); }catch{} });
 
-  // Online counter
+  // Show online
   onSnapshot(collection(db, "sessions", customerKey, "presence"), (snap) => {
-    const now = Date.now(); let online = 0;
-    snap.forEach(d => { const t = d.data().lastActive?.toMillis?.() || 0; if (now - t < 45000) online++; });
+    const now = Date.now(); let online=0;
+    snap.forEach(d => { const t=d.data().lastActive?.toMillis?.()||0; if (now - t < 45000) online++; });
     const el = document.getElementById("rt-online"); if (el) el.textContent = `${online} online`;
   });
 
-  // --- Shared session state (timeline/runbooks) ---
+  // ---- Session state (listen-first; no initial overwrite) ----
   const sessionRef = doc(db, "sessions", customerKey);
   const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
-  await sleep(200); // let the app initialize
+  await sleep(200); // let app boot
 
   function serializeAppState(){
-    const s = {
+    return {
       runbooks: (window.AppState?.runbooks || []).map(r=>({...r})),
       downtimeStarted: !!window.AppState?.downtimeStarted,
       downtimeStartTime: window.AppState?.downtimeStartTime ? window.AppState.downtimeStartTime.toISOString() : null,
@@ -2048,7 +2039,6 @@ function generateReport(){
       downtimePaused: !!window.AppState?.downtimePaused,
       pausedDuration: window.AppState?.pausedDuration ?? 0
     };
-    return s;
   }
   function applyRemoteState(s){
     if (!window.AppState) return;
@@ -2067,15 +2057,37 @@ function generateReport(){
     } catch {}
   }
 
-  // Ensure doc exists
-  try {
-    const s = await getDoc(sessionRef);
-    if (!s.exists()) await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid }, { merge:true });
-  } catch (e) { console.error("[session] ensure failed:", e); }
+  // Prepare sync guards
+  let initialApplied = false;   // becomes true after first snapshot
+  let createdSession = false;   // set true only if we create the doc
+  let writing = false;
+  let lastSent = null;
 
-  // Debounced + periodic pushes
-  let writing=false, lastSent=null, timer=null;
+  // Ensure session doc exists OR fetch existing without writing
+  try {
+    const snap = await getDoc(sessionRef);
+    if (!snap.exists()) {
+      // Create brand new with local initial state
+      await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid }, { merge:true });
+      createdSession = true;
+    }
+  } catch(e){ console.error("[session] ensure/fetch failed:", e); }
+
+  // Subscribe to remote; apply first, then enable pushing
+  onSnapshot(sessionRef, (snap) => {
+    const data = snap.data() || {};
+    if (data.state) applyRemoteState(data.state);
+
+    // After the very first snapshot, set lastSent to what we have locally (to avoid overwriting)
+    if (!initialApplied) {
+      initialApplied = true;
+      try { lastSent = JSON.stringify(serializeAppState()); } catch {}
+    }
+  });
+
+  // Debounced / periodic pushes (only after initialApplied)
   async function push(reason="debounce"){
+    if (!initialApplied) return; // listen-first: don't write until we have a snapshot
     try{
       const nowJson = JSON.stringify(serializeAppState());
       if (nowJson === lastSent || writing) return;
@@ -2089,6 +2101,7 @@ function generateReport(){
       }catch(e2){ console.error("[session] write failed:", e2); }
     }finally{ writing=false; }
   }
+  let timer=null;
   function schedule(){ clearTimeout(timer); timer = setTimeout(()=>push("debounce"), 250); }
 
   ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility","updateScheduleTime","updateDurationTime","toggleCompleted","startTimeline","startTimer"]
@@ -2096,9 +2109,6 @@ function generateReport(){
 
   ["click","change","input"].forEach(evt => document.addEventListener(evt, schedule, true));
   setInterval(()=>push("interval"), 1000);
-
-  onSnapshot(sessionRef, (snap)=>{ const d=snap.data(); if (d?.state) applyRemoteState(d.state); });
-  push("initial");
 </script>
 
 </body>

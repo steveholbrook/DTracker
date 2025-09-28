@@ -1,23 +1,17 @@
-# DTracker — GitHub Pages + Firebase (UID presence)
+# DTracker — listen-first sync (UID presence)
 
-**What this build does**
-- Presence docs use **plain UID**: `/sessions/{customer}/presence/{UID}` (matches strict rules).
-- Shared session state (timeline/runbooks) syncs via `/sessions/{customer}`.
-- Non-caching service worker to avoid stale/blank pages.
+**What changed**
+- Uses UID as presence doc id (matches strict rules).
+- **Listen-first**: loads remote state first and only then allows writes.
+  - Prevents a second browser from overwriting the session with defaults.
 
 **Deploy**
-1. Copy all files in this folder to your repo root (e.g. `DTracker/`).
-2. GitHub → Settings → Pages → Source = **main / root**.
-3. Open: `https://<user>.github.io/<repo>/?customer=Woolworths%20Group`
+1. Copy these files to repo root (GitHub Pages source = **main / root**).
+2. Publish Firestore rules from `firebase_rules.txt`.
+3. Optional: open `unregister-sw.html` once to clear old service workers.
 
-**Verify**
-- (Optional) Open `unregister-sw.html` once to clear old SW caches.
-- Open `diag.html?customer=Woolworths%20Group` in two different browsers/profiles:
-  - Auth = OK, Presence write = OK, Online increments to 2.
+**Test**
+- Open `/?customer=Woolworths%20Group` in two browsers (or Incognito).
+- Online should become 2; Start Timeline in one; the other mirrors.
 
-**Firebase prerequisites**
-- Authentication → Sign-in method → **Anonymous = Enabled**
-- Authentication → Settings → Authorized domains → add `steveholbrook.github.io`
-- Firestore → Rules → publish the rules in `firebase_rules.txt`
-
-— Generated 1759093596
+— Generated 1759094192
