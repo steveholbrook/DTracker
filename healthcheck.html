@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DTracker Health Check</title>
+<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:20px;}</style>
+<h1>DTracker Health Check</h1>
+<p>If you can see this, GitHub Pages is serving your HTML correctly.</p>
+<ul id="results"></ul>
+<script src="./unregister-sw.js"></script>
+<script>
+  const ul = document.getElementById('results');
+  function log(msg){ const li=document.createElement('li'); li.textContent=msg; ul.appendChild(li); }
+  log('HTML loaded ✔');
+  try { new URL(window.location.href); log('JavaScript running ✔'); } catch(e){ log('JS error: '+e.message); }
+</script>
+</html>
