@@ -1959,30 +1959,11 @@ function generateReport(){
 </script>
 
 
-<!-- === Bridge classic script: expose AppState & hook functions to window === -->
-<script>
-  try {
-    if (typeof AppState !== 'undefined') {
-      window._AppStateRef = AppState;
-    }
-  } catch (e) {}
-
-  (function(){
-    const names = ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility","updateScheduleTime","updateDurationTime","toggleCompleted","startTimeline","startTimer","updateTimeline","renderRunbookTable"];
-    names.forEach(n => {
-      try { if (typeof window[n] !== "function" && typeof eval(n) === "function") { window[n] = eval(n); } } catch(_){}
-    });
-  })();
-</script>
-
-
-<!-- === Firebase realtime sync (listen-first) — uses window._AppStateRef === -->
+<!-- === Firebase realtime sync (listen-first) — NO-TAKEOVER variant === -->
 <script type="module">
-  const [{ initializeApp }, { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection }, { getAuth, signInAnonymously, onAuthStateChanged }] = await Promise.all([
-    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
-    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"),
-    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"),
-  ]);
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyAredpIvTx0c7uxn23HZoD3YkTgcG4cHbk",
@@ -1998,8 +1979,10 @@ function generateReport(){
   const db = getFirestore(app);
   const auth = getAuth(app);
 
+  // URL params
   const url = new URL(window.location.href);
   let customerParam = url.searchParams.get("customer") || "";
+  const viewerForced = url.searchParams.get("viewer") === "1";
   const nameInput = document.getElementById("customerName");
   if (!customerParam && nameInput && nameInput.value) customerParam = nameInput.value;
   const toKey = s => (s||"default").toString().trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"") || "default";
@@ -2007,15 +1990,18 @@ function generateReport(){
   if (!url.searchParams.get("customer")) { url.searchParams.set("customer", customerParam || "default"); history.replaceState(null, "", url.toString()); }
   if (nameInput && customerParam) nameInput.value = customerParam;
 
+  // Overlay (mode + online) — no takeover UI
   (function overlay(){
     const box = document.createElement("div");
-    box.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:99999;";
-    box.innerHTML = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
-        <strong>Customer:</strong>
-        <span id="rt-customer" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${customerParam || "default"}</span>
-        <button id="rt-copy" style="margin-left:8px;padding:4px 8px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#f9f9fb;">Copy link</button>
+    box.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:99999;min-width:220px";
+    box.innerHTML = `<div style="display:flex;gap:6px;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <div><strong>Customer:</strong> <span id="rt-customer" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${customerParam || "default"}</span></div>
+        <button id="rt-copy" style="padding:4px 8px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#f9f9fb;">Copy link</button>
       </div>
-      <div><span id="rt-online" style="display:inline-block;padding:2px 8px;border:1px solid #dcdcdc;border-radius:999px;">0 online</span></div>`;
+      <div style="display:flex;gap:6px;align-items:center;justify-content:space-between;">
+        <span id="rt-online" style="display:inline-block;padding:2px 8px;border:1px solid #dcdcdc;border-radius:999px;">0 online</span>
+        <span id="rt-mode" style="font-weight:600;color:#444">mode: —</span>
+      </div>`;
     document.body.appendChild(box);
     document.getElementById("rt-copy").onclick = async () => {
       await navigator.clipboard.writeText(window.location.href);
@@ -2023,6 +2009,7 @@ function generateReport(){
     };
   })();
 
+  // Auth + presence (plain UID doc id)
   await signInAnonymously(auth);
   const uid = await new Promise((resolve) => onAuthStateChanged(auth, (u)=>{ if(u){ resolve(u.uid); } }));
   const presenceRef = doc(db, "sessions", customerKey, "presence", uid);
@@ -2034,106 +2021,134 @@ function generateReport(){
   setInterval(upsertPresence, 20000);
   window.addEventListener("beforeunload", async () => { try{ await setDoc(presenceRef, { lastActive: serverTimestamp(), leftAt: serverTimestamp() }, { merge:true }); }catch{} });
 
+  // Online count
   onSnapshot(collection(db, "sessions", customerKey, "presence"), (snap) => {
-    const now = Date.now(); let online=0;
-    snap.forEach(d => { const t=d.data().lastActive?.toMillis?.()||0; if (now - t < 45000) online++; });
+    const now = Date.now(); let online = 0;
+    snap.forEach(d => { const t = d.data().lastActive?.toMillis?.() || 0; if (now - t < 45000) online++; });
     const el = document.getElementById("rt-online"); if (el) el.textContent = `${online} online`;
   });
 
   const sessionRef = doc(db, "sessions", customerKey);
-  const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
-  await sleep(200);
+  const sleep = (ms)=>new Promise(r=>setTimeout(r,ms)); await sleep(200);
 
-  function getStateSource(){ return window._AppStateRef || null; }
-
-  function serializeAppState(){
-    const S = getStateSource();
-    if (!S) {
-      const st = (document.getElementById('statusText')?.textContent||'').toLowerCase();
-      const started = /in progress|running/.test(st);
-      return {
-        runbooks: [],
-        downtimeStarted: started,
-        downtimeStartTime: null,
-        downtimeDuration: parseInt(document.getElementById('downtimeDuration')?.value) || 24,
-        downtimePaused: /paused/.test(st),
-        pausedDuration: 0
-      };
-    }
+  // Safe access to app state
+  function S(){ return window._AppStateRef || window.AppState || (window._AppStateRef = { runbooks:[], downtimeStarted:false, downtimePaused:false, pausedDuration:0, downtimeDuration:24, downtimeStartTime:null }); }
+  function serialize(){
+    const s = S();
     return {
-      runbooks: Array.isArray(S.runbooks) ? S.runbooks.map(r=>({...r})) : [],
-      downtimeStarted: !!S.downtimeStarted,
-      downtimeStartTime: S.downtimeStartTime ? (S.downtimeStartTime.toISOString ? S.downtimeStartTime.toISOString() : new Date(S.downtimeStartTime).toISOString()) : null,
-      downtimeDuration: typeof S.downtimeDuration === "number" ? S.downtimeDuration : (parseInt(document.getElementById('downtimeDuration')?.value) || 24),
-      downtimePaused: !!S.downtimePaused,
-      pausedDuration: typeof S.pausedDuration === "number" ? S.pausedDuration : 0
+      runbooks: (s.runbooks || []).map(r=>({...r})),
+      downtimeStarted: !!s.downtimeStarted,
+      downtimeStartTime: s.downtimeStartTime ? new Date(s.downtimeStartTime).toISOString() : null,
+      downtimeDuration: s.downtimeDuration ?? 24,
+      downtimePaused: !!s.downtimePaused,
+      pausedDuration: s.pausedDuration ?? 0
     };
   }
-
-  function applyRemoteState(state){
-    const S = getStateSource();
-    if (!S) return;
-    S.runbooks = Array.isArray(state.runbooks) ? state.runbooks : [];
-    S.downtimeStarted = !!state.downtimeStarted;
-    S.downtimeDuration = typeof state.downtimeDuration === "number" ? state.downtimeDuration : 24;
-    S.downtimePaused = !!state.downtimePaused;
-    S.pausedDuration = typeof state.pausedDuration === "number" ? state.pausedDuration : 0;
-    S.downtimeStartTime = state.downtimeStartTime ? new Date(state.downtimeStartTime) : null;
-
-    try {
+  function applyRemoteState(st){
+    const s = S();
+    Object.assign(s, {
+      runbooks: Array.isArray(st.runbooks) ? st.runbooks : [],
+      downtimeStarted: !!st.downtimeStarted,
+      downtimeDuration: typeof st.downtimeDuration === "number" ? st.downtimeDuration : 24,
+      downtimePaused: !!st.downtimePaused,
+      pausedDuration: typeof st.pausedDuration === "number" ? st.pausedDuration : 0,
+      downtimeStartTime: st.downtimeStartTime ? new Date(st.downtimeStartTime) : null
+    });
+    try{
       if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
       if (typeof window.updateTimeline === "function") window.updateTimeline();
       if (typeof window.updateClock === "function") window.updateClock();
-    } catch (e) {}
+    }catch{}
   }
 
+  // Mode handling (HOST/VIEWER) — no takeover
   let initialApplied = false;
-  let writing = false;
   let lastSent = null;
+  let writing = false;
+  let remoteController = null;
+  let controllerAttempted = false;
 
+  function setReadOnlyUI(ro){
+    const modeEl = document.getElementById("rt-mode");
+    if (modeEl) modeEl.textContent = ro ? "mode: VIEWER" : "mode: HOST";
+    const disable = (el) => {
+      if (!el) return;
+      if (el.id === "rt-copy") return;
+      el.setAttribute("disabled","true");
+      el.style.pointerEvents = "none";
+      el.style.opacity = "0.6";
+    };
+    const enable = (el) => {
+      if (!el) return;
+      if (el.id === "rt-copy") return;
+      el.removeAttribute("disabled");
+      el.style.pointerEvents = "";
+      el.style.opacity = "";
+    };
+    const nodes = document.querySelectorAll("button, input, select, textarea");
+    nodes.forEach(ro ? disable : enable);
+  }
+
+  function canWrite(){ return !viewerForced && remoteController === uid; }
+
+  // Ensure doc exists
   try {
     const s = await getDoc(sessionRef);
-    if (!s.exists()) await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid }, { merge:true });
+    if (!s.exists()) await setDoc(sessionRef, { state: serialize(), updatedAt: serverTimestamp() }, { merge:true });
   } catch(e){ console.error("[session] ensure failed:", e); }
 
-  onSnapshot(sessionRef, (snap) => {
-    const data = snap.data();
-    if (data?.state) applyRemoteState(data.state);
+  // Subscribe
+  onSnapshot(sessionRef, async (snap) => {
+    const data = snap.data() || {};
+    remoteController = data.controllerUid || null;
+    if (data.state) applyRemoteState(data.state);
+
+    // If no controller yet, try once to claim (first writer wins). Rules will prevent changes later.
+    if (!remoteController && !controllerAttempted && !viewerForced) {
+      controllerAttempted = true;
+      try { await setDoc(sessionRef, { controllerUid: uid, controllerSetAt: serverTimestamp() }, { merge:true }); }
+      catch (e) { /* ignore; another tab probably won */ }
+    }
+
+    setReadOnlyUI(!canWrite());
+
     if (!initialApplied) {
       initialApplied = true;
-      try { lastSent = JSON.stringify(serializeAppState()); } catch {}
+      try { lastSent = JSON.stringify(serialize()); } catch {}
     }
   });
 
+  // Push (only host; never sets controllerUid after it's set)
   async function push(reason="debounce"){
-    if (!initialApplied) return;
-    try {
-      const nowJson = JSON.stringify(serializeAppState());
+    if (!initialApplied || !canWrite()) return;
+    try{
+      const nowJson = JSON.stringify(serialize());
       if (nowJson === lastSent || writing) return;
       writing = true;
-      await updateDoc(sessionRef, { state: JSON.parse(nowJson), updatedAt: serverTimestamp(), lastWriter: uid, reason });
+      await updateDoc(sessionRef, { state: JSON.parse(nowJson), updatedAt: serverTimestamp(), reason });
       lastSent = nowJson;
-    } catch (e) {
-      try {
-        await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid, reason }, { merge:true });
-        lastSent = JSON.stringify(serializeAppState());
-      } catch (e2) { console.error("[session] write failed:", e2); }
-    } finally { writing = false; }
+    }catch(e){
+      try{
+        await setDoc(sessionRef, { state: serialize(), updatedAt: serverTimestamp(), reason }, { merge:true });
+        lastSent = JSON.stringify(serialize());
+      }catch(e2){ console.error("[session] write failed:", e2); }
+    }finally{ writing=false; }
   }
 
   let timer=null;
   function schedule(){ clearTimeout(timer); timer = setTimeout(()=>push("debounce"), 250); }
 
+  // Hook mutators; pushes are gated by canWrite()
   ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility","updateScheduleTime","updateDurationTime","toggleCompleted","startTimeline","startTimer"]
-    .forEach(fn => {
-      const orig = window[fn];
-      if (typeof orig === "function") {
-        window[fn] = function(...a){ const r = orig.apply(this, a); schedule(); return r; };
-      }
-    });
+    .forEach(fn => { const orig = window[fn]; if (typeof orig==="function"){ window[fn]=function(...a){ const r=orig.apply(this,a); schedule(); return r; }; } });
 
   ["click","change","input"].forEach(evt => document.addEventListener(evt, schedule, true));
   setInterval(()=>push("interval"), 1000);
+</script>
+
+<!-- Bridge so module code can see AppState if declared with const in classic scripts -->
+<script>
+  try { if (typeof AppState !== "undefined") window._AppStateRef = AppState; } catch (e) {}
 </script>
 
 </body>

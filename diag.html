@@ -12,14 +12,13 @@
   <div><b>Presence write:</b> <span id="presence" class="err">pending…</span></div>
   <div><b>Online count:</b> <span id="online">0</span></div>
   <div><b>Session doc exists:</b> <span id="session">—</span></div>
+  <div><b>Controller UID:</b> <span id="controller">—</span></div>
   <div><b>Last session state:</b> <pre id="state" style="max-height:220px;overflow:auto">—</pre></div>
 </div>
 <script type="module">
-  const [{ initializeApp }, { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp, collection }, { getAuth, signInAnonymously, onAuthStateChanged }] = await Promise.all([
-    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
-    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"),
-    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"),
-  ]);
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyAredpIvTx0c7uxn23HZoD3YkTgcG4cHbk",
@@ -71,6 +70,7 @@
   }
   onSnapshot(sessionRef, (snap) => {
     const data = snap.data() || {};
+    el("controller").textContent = data.controllerUid || "—";
     el("state").textContent = JSON.stringify(data.state || data, null, 2);
   });
 </script>
