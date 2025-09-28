@@ -1946,13 +1946,26 @@ function generateReport(){
 
 </script>
 
+<!-- Register the service worker for Progressive Web App support -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('service-worker.js')
+        .catch(function(err) {
+          console.error('Service worker registration failed:', err);
+        });
+    });
+  }
+</script>
 
-<!-- === Realtime Sync (Firebase) — keyed by ?customer=NAME; robust auto-sync === -->
+
+<!-- === Firebase realtime sync: presence doc ID = plain UID (no prefix) === -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
+  // Your Firebase project (from your message)
   const firebaseConfig = {
     apiKey: "AIzaSyAredpIvTx0c7uxn23HZoD3YkTgcG4cHbk",
     authDomain: "downtime-tracking-135f6.firebaseapp.com",
@@ -1967,83 +1980,68 @@ function generateReport(){
   const db = getFirestore(app);
   const auth = getAuth(app);
 
+  // Resolve customer from ?customer= (fallback: any #customerName input value)
   const url = new URL(window.location.href);
   let customerParam = url.searchParams.get("customer") || "";
   const nameInput = document.getElementById("customerName");
   if (!customerParam && nameInput && nameInput.value) customerParam = nameInput.value;
-  function toKey(s) { return (s || "default").toString().trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "default"; }
+  const toKey = s => (s||"default").toString().trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"") || "default";
   const customerKey = toKey(customerParam);
+  if (!url.searchParams.get("customer")) { url.searchParams.set("customer", customerParam || "default"); history.replaceState(null, "", url.toString()); }
+  if (nameInput && customerParam) nameInput.value = customerParam;
 
-  if (!url.searchParams.get("customer")) {
-    url.searchParams.set("customer", customerParam || "default");
-    history.replaceState(null, "", url.toString());
-  }
-  if (nameInput && customerParam) { nameInput.value = customerParam; }
+  // Overlay (Customer + Online)
+  (function overlay(){
+    const box = document.createElement("div");
+    box.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:99999;";
+    box.innerHTML = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+        <strong>Customer:</strong>
+        <span id="rt-customer" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${customerParam || "default"}</span>
+        <button id="rt-copy" style="margin-left:8px;padding:4px 8px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#f9f9fb;">Copy link</button>
+      </div>
+      <div><span id="rt-online" style="display:inline-block;padding:2px 8px;border:1px solid #dcdcdc;border-radius:999px;">0 online</span></div>`;
+    document.body.appendChild(box);
+    document.getElementById("rt-copy").onclick = async () => {
+      await navigator.clipboard.writeText(window.location.href);
+      const btn = document.getElementById("rt-copy"); const prev = btn.textContent; btn.textContent="Copied"; setTimeout(()=>btn.textContent=prev, 1000);
+    };
+  })();
 
-  const overlay = document.createElement("div");
-  overlay.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:99999;";
-  overlay.innerHTML = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
-      <strong>Customer:</strong>
-      <span id="rt-customer" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${customerParam || "default"}</span>
-      <button id="rt-copy" style="margin-left:8px;padding:4px 8px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#f9f9fb;">Copy link</button>
-    </div>
-    <div><span id="rt-online" style="display:inline-block;padding:2px 8px;border:1px solid #dcdcdc;border-radius:999px;">0 online</span></div>`;
-  document.body.appendChild(overlay);
-  document.getElementById("rt-copy").onclick = async () => {
-    await navigator.clipboard.writeText(window.location.href);
-    const btn = document.getElementById("rt-copy");
-    const prev = btn.textContent; btn.textContent = "Copied"; setTimeout(()=>btn.textContent=prev, 1000);
-  };
+  // --- Anonymous Auth, then presence doc using **plain UID** ---
+  await signInAnonymously(auth);
+  const uid = await new Promise((resolve) => onAuthStateChanged(auth, (u)=>{ if(u){ resolve(u.uid); } }));
 
-  let uid = null;
-  try { await signInAnonymously(auth); } catch (e) { console.error("[auth] signInAnonymously failed:", e); }
-  onAuthStateChanged(auth, (u) => { if (u) uid = u.uid; });
-
-  const sessionRef = doc(db, "sessions", customerKey);
-  let presenceRef = doc(db, "sessions", customerKey, "presence", "uid_" + (uid || "pending"));
-  const presenceCol = collection(db, "sessions", customerKey, "presence");
-
-  async function upsertPresence() {
+  // Presence at /sessions/<customerKey>/presence/<UID>
+  const presenceRef = doc(db, "sessions", customerKey, "presence", uid);
+  async function upsertPresence(){
     try {
-      await setDoc(presenceRef, { name: (nameInput && nameInput.value) || customerParam || "Guest", lastActive: serverTimestamp() }, { merge: true });
+      await setDoc(presenceRef, {
+        name: (nameInput && nameInput.value) || customerParam || "Guest",
+        lastActive: serverTimestamp()
+      }, { merge: true });
     } catch (e) { console.error("[presence] setDoc failed:", e); }
   }
-  const uidTimer = setInterval(async () => {
-    try {
-      if (auth.currentUser?.uid && presenceRef.id.endsWith("pending")) {
-        const pendingRef = presenceRef;
-        presenceRef = doc(db, "sessions", customerKey, "presence", "uid_" + auth.currentUser.uid);
-        await upsertPresence();
-        try { await deleteDoc(pendingRef); } catch {}
-        clearInterval(uidTimer);
-      }
-    } catch {}
-  }, 300);
-
-  setInterval(upsertPresence, 20000);
   await upsertPresence();
+  setInterval(upsertPresence, 20000);
   window.addEventListener("beforeunload", async () => {
     try { await setDoc(presenceRef, { lastActive: serverTimestamp(), leftAt: serverTimestamp() }, { merge: true }); } catch {}
   });
 
-  onSnapshot(presenceCol, (snap) => {
-    const now = Date.now();
-    let online = 0;
-    snap.forEach(d => {
-      const data = d.data();
-      const ts = data.lastActive && data.lastActive.toMillis ? data.lastActive.toMillis() : 0;
-      if (now - ts < 45000) online++;
-    });
-    const el = document.getElementById("rt-online");
-    if (el) el.textContent = `${online} online`;
+  // Online counter
+  onSnapshot(collection(db, "sessions", customerKey, "presence"), (snap) => {
+    const now = Date.now(); let online = 0;
+    snap.forEach(d => { const t = d.data().lastActive?.toMillis?.() || 0; if (now - t < 45000) online++; });
+    const el = document.getElementById("rt-online"); if (el) el.textContent = `${online} online`;
   });
 
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-  await sleep(200);
+  // --- Shared session state (timeline/runbooks) ---
+  const sessionRef = doc(db, "sessions", customerKey);
+  const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+  await sleep(200); // let the app initialize
 
-  function serializeAppState() {
+  function serializeAppState(){
     const s = {
-      runbooks: (window.AppState?.runbooks || []).map(r => ({...r})),
+      runbooks: (window.AppState?.runbooks || []).map(r=>({...r})),
       downtimeStarted: !!window.AppState?.downtimeStarted,
       downtimeStartTime: window.AppState?.downtimeStartTime ? window.AppState.downtimeStartTime.toISOString() : null,
       downtimeDuration: window.AppState?.downtimeDuration ?? 24,
@@ -2052,97 +2050,55 @@ function generateReport(){
     };
     return s;
   }
-
-  function applyRemoteState(s) {
+  function applyRemoteState(s){
     if (!window.AppState) return;
-    const toAssign = {
+    Object.assign(window.AppState, {
       runbooks: Array.isArray(s.runbooks) ? s.runbooks : [],
       downtimeStarted: !!s.downtimeStarted,
       downtimeDuration: typeof s.downtimeDuration === "number" ? s.downtimeDuration : 24,
       downtimePaused: !!s.downtimePaused,
       pausedDuration: typeof s.pausedDuration === "number" ? s.pausedDuration : 0,
       downtimeStartTime: s.downtimeStartTime ? new Date(s.downtimeStartTime) : null
-    };
-    Object.assign(window.AppState, toAssign);
+    });
     try {
       if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
       if (typeof window.updateTimeline === "function") window.updateTimeline();
       if (typeof window.updateClock === "function") window.updateClock();
-    } catch (e) {}
+    } catch {}
   }
 
-  async function ensureSessionDoc() {
-    try {
-      const snap = await getDoc(sessionRef);
-      if (!snap.exists()) {
-        await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid || null, customer: customerParam || null });
-      }
-    } catch (e) { console.error("[session] ensure failed:", e); }
-  }
-  await ensureSessionDoc();
+  // Ensure doc exists
+  try {
+    const s = await getDoc(sessionRef);
+    if (!s.exists()) await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid }, { merge:true });
+  } catch (e) { console.error("[session] ensure failed:", e); }
 
-  let writing = false;
-  let lastSent = null;
-  let debounceTimer = null;
-
-  async function pushStateIfChanged(reason="debounce") {
-    try {
+  // Debounced + periodic pushes
+  let writing=false, lastSent=null, timer=null;
+  async function push(reason="debounce"){
+    try{
       const nowJson = JSON.stringify(serializeAppState());
       if (nowJson === lastSent || writing) return;
       writing = true;
-      await updateDoc(sessionRef, { state: JSON.parse(nowJson), updatedAt: serverTimestamp(), lastWriter: uid || null, customer: (nameInput && nameInput.value) || customerParam || null, reason });
+      await updateDoc(sessionRef, { state: JSON.parse(nowJson), updatedAt: serverTimestamp(), lastWriter: uid, reason });
       lastSent = nowJson;
-    } catch (e) {
-      try {
-        await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid || null, customer: (nameInput && nameInput.value) || customerParam || null, reason }, { merge: true });
+    }catch(e){
+      try{
+        await setDoc(sessionRef, { state: serializeAppState(), updatedAt: serverTimestamp(), lastWriter: uid, reason }, { merge:true });
         lastSent = JSON.stringify(serializeAppState());
-      } catch (e2) {
-        console.error("[session] write failed:", e2);
-      }
-    } finally {
-      writing = false;
-    }
+      }catch(e2){ console.error("[session] write failed:", e2); }
+    }finally{ writing=false; }
   }
+  function schedule(){ clearTimeout(timer); timer = setTimeout(()=>push("debounce"), 250); }
 
-  function scheduleSync() {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => pushStateIfChanged("debounce"), 250);
-  }
+  ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility","updateScheduleTime","updateDurationTime","toggleCompleted","startTimeline","startTimer"]
+    .forEach(fn => { const orig = window[fn]; if (typeof orig==="function"){ window[fn]=function(...a){ const r=orig.apply(this,a); schedule(); return r; }; } });
 
-  const maybeFns = ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility","updateScheduleTime","updateDurationTime","toggleCompleted","startTimeline","startTimer"];
-  maybeFns.forEach(name => {
-    const orig = window[name];
-    if (typeof orig === "function") {
-      window[name] = function(...args) {
-        const result = orig.apply(this, args);
-        scheduleSync();
-        return result;
-      }
-    }
-  });
+  ["click","change","input"].forEach(evt => document.addEventListener(evt, schedule, true));
+  setInterval(()=>push("interval"), 1000);
 
-  ["click","change","input"].forEach(evt => document.addEventListener(evt, scheduleSync, true));
-  setInterval(() => pushStateIfChanged("interval"), 1000);
-
-  onSnapshot(sessionRef, (snap) => {
-    const data = snap.data();
-    if (!data) return;
-    if (data.state) applyRemoteState(data.state);
-  });
-
-  pushStateIfChanged("initial");
-</script>
-
-<!-- Register the service worker for Progressive Web App support -->
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function() {
-      navigator.serviceWorker.register('service-worker.js')
-        .catch(function(err) {
-          console.error('Service worker registration failed:', err);
-        });
-    });
-  }
+  onSnapshot(sessionRef, (snap)=>{ const d=snap.data(); if (d?.state) applyRemoteState(d.state); });
+  push("initial");
 </script>
 
 </body>

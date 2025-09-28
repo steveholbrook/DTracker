@@ -1,0 +1,23 @@
+<!doctype html>
+<title>Unregister Service Workers</title>
+<h1>Unregister Service Workers</h1>
+<p>Click the button to unregister any service workers for this origin and clear caches.</p>
+<button id="btn">Unregister & Clear Caches</button>
+<pre id="log"></pre>
+<script>
+const log = (...a)=>{document.getElementById('log').textContent += a.join(' ') + "\n";};
+document.getElementById('btn').onclick = async () => {
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      if (regs.length === 0) log('No service workers registered.');
+      for (const r of regs) { await r.unregister(); log('Unregistered:', r.scope); }
+    }
+    if (window.caches && caches.keys) {
+      const keys = await caches.keys();
+      for (const k of keys) { await caches.delete(k); log('Deleted cache:', k); }
+    }
+    log('Done. Reload your site in a fresh tab.');
+  } catch (e) { log('Error:', e && e.message || e); console.error(e); }
+};
+</script>

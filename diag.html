@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DTracker Diagnostics</title>
+<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:16px}.ok{color:#0a6d12}.err{color:#b00020}.box{border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0;background:#fafafa}code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}</style>
+<h1>DTracker Diagnostics</h1>
+<p>This checks Anonymous Auth, Presence writes, and Session state for the current <b>?customer=</b>.</p>
+<div class="box">
+  <div><b>Customer:</b> <span id="cust">(none)</span></div>
+  <div><b>UID:</b> <span id="uid">—</span></div>
+  <div><b>Auth:</b> <span id="auth" class="err">pending…</span></div>
+  <div><b>Presence write:</b> <span id="presence" class="err">pending…</span></div>
+  <div><b>Online count:</b> <span id="online">0</span></div>
+  <div><b>Session doc exists:</b> <span id="session">—</span></div>
+  <div><b>Last session state:</b> <pre id="state" style="max-height:220px;overflow:auto">—</pre></div>
+</div>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAredpIvTx0c7uxn23HZoD3YkTgcG4cHbk",
+    authDomain: "downtime-tracking-135f6.firebaseapp.com",
+    projectId: "downtime-tracking-135f6",
+    storageBucket: "downtime-tracking-135f6.firebasestorage.app",
+    messagingSenderId: "422856401277",
+    appId: "1:422856401277:web:7b10cb426abf816d74ec14",
+    measurementId: "G-CJ2F30SYRY"
+  };
+
+  const el = id => document.getElementById(id);
+  const url = new URL(window.location.href);
+  const customerParam = url.searchParams.get("customer") || "default";
+  const customerKey = (customerParam||"default").toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"") || "default";
+  el("cust").textContent = `${customerParam}  (key: ${customerKey})`;
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  try { await signInAnonymously(auth); el("auth").textContent = "OK (Anonymous)"; el("auth").className="ok"; }
+  catch (e) { el("auth").textContent = "Auth failed: " + (e?.message||e); el("auth").className="err"; }
+
+  const uid = await new Promise((resolve)=> onAuthStateChanged(auth, (u)=>{ if(u){ el("uid").textContent=u.uid; resolve(u.uid); } }));
+
+  const presenceRef = doc(db, "sessions", customerKey, "presence", uid);
+  async function touchPresence() {
+    try { await setDoc(presenceRef, { name: "Diagnostics", lastActive: serverTimestamp() }, { merge: true });
+      el("presence").textContent = "OK"; el("presence").className="ok";
+    } catch (e) { el("presence").textContent = "Presence write failed: " + (e?.message||e); el("presence").className="err"; }
+  }
+  await touchPresence();
+  setInterval(touchPresence, 20000);
+
+  onSnapshot(collection(db, "sessions", customerKey, "presence"), (snap) => {
+    const now = Date.now(); let online = 0;
+    snap.forEach(d => { const t = d.data().lastActive?.toMillis?.() || 0; if (now - t < 45000) online++; });
+    el("online").textContent = online;
+  });
+
+  const sessionRef = doc(db, "sessions", customerKey);
+  try {
+    const s = await getDoc(sessionRef);
+    if (!s.exists()) await setDoc(sessionRef, { createdAt: serverTimestamp(), state: {}, customer: customerParam }, { merge: true });
+    el("session").textContent = "Yes";
+  } catch (e) {
+    el("session").textContent = "No (write failed): " + (e?.message||e);
+  }
+  onSnapshot(sessionRef, (snap) => {
+    const data = snap.data() || {};
+    el("state").textContent = JSON.stringify(data.state || data, null, 2);
+  });
+</script>
