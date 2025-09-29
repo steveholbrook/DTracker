@@ -1,8 +1,9 @@
-# DTracker — NO-TAKEOVER + Locked Fields + URL phase + Viewer progress
+# DTracker — NO-TAKEOVER + Locked Fields + URL phase + Viewer progress + RESET (clears Customer/Phase)
 
-- Use URLs like: `/?customer=Woolworths%20Group&phase=Stabilize`.
-- When host starts the timeline, **Customer Name** and **Transform Cycle** are locked for everyone.
-- Viewer overlay shows **Start**, **ETA**, and a live progress bar.
-- Firestore rules enforce **no takeover** (first writer stays controller).
+**New in this build**
+- **Reset** now also clears **Customer Name** and **Transform Cycle** in shared state, and updates the URL to `?customer=default` (removes `phase`). All tabs mirror the blank fields.
+- Viewer progress overlay force-refreshes on mode & state changes to ensure it always shows up in VIEWER mode.
 
-— Generated 1759104597
+**Share URLs** like: `/?customer=Woolworths%20Group&phase=Stabilize`
+
+— Generated 1759107331

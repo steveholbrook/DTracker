@@ -1959,7 +1959,7 @@ function generateReport(){
 </script>
 
 
-<!-- === Firebase realtime sync — NO-TAKEOVER + locked fields + URL phase + viewer progress === -->
+<!-- === Firebase realtime sync — NO-TAKEOVER + locked fields + URL phase + viewer progress + RESET clears Customer/Phase === -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -1979,12 +1979,11 @@ function generateReport(){
   const db = getFirestore(app);
   const auth = getAuth(app);
 
-  // URL params (support ?phase= or ?transformCycle=)
+  // URL params (support both ?phase= and ?transformCycle=)
   const url = new URL(window.location.href);
   let customerParam = url.searchParams.get("customer") || "";
   let phaseParam = url.searchParams.get("phase") || url.searchParams.get("transformCycle") || "";
   const viewerForced = url.searchParams.get("viewer") === "1";
-
   const nameInput = document.getElementById("customerName");
   const phaseInput = document.getElementById("transformCycle");
 
@@ -2005,11 +2004,11 @@ function generateReport(){
   if (nameInput && customerParam) nameInput.value = customerParam;
   if (phaseInput && phaseParam) phaseInput.value = phaseParam;
 
-  // Overlay (mode + online + viewer progress)
+  // ===== Overlay (mode + online + viewer progress + Reset button) =====
   (function overlay(){
-    const box = document.createElement("div");
-    box.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:99999;min-width:260px";
-    box.innerHTML = `<div style="display:flex;gap:6px;align-items:center;justify-content:space-between;margin-bottom:6px;">
+    const right = document.createElement("div");
+    right.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:100000;min-width:260px";
+    right.innerHTML = `<div style="display:flex;gap:6px;align-items:center;justify-content:space-between;margin-bottom:6px;">
         <div><strong>Customer:</strong> <span id="rt-customer" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${customerParam || "default"}</span></div>
         <button id="rt-copy" style="padding:4px 8px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#f9f9fb;">Copy link</button>
       </div>
@@ -2025,16 +2024,22 @@ function generateReport(){
         </div>
         <div id="rt-bar-label" style="font-size:11px;margin-top:4px;text-align:right">0%</div>
       </div>`;
-    document.body.appendChild(box);
+    document.body.appendChild(right);
     document.getElementById("rt-copy").onclick = async () => {
       await navigator.clipboard.writeText(window.location.href);
       const btn = document.getElementById("rt-copy"); const prev = btn.textContent; btn.textContent="Copied"; setTimeout(()=>btn.textContent=prev, 1000);
     };
-    const bar = box.querySelector("#rt-bar");
-    bar.style.background = "linear-gradient(90deg, rgba(0,0,0,.15), rgba(0,0,0,.35))";
+    const bar = right.querySelector("#rt-bar");
+    bar.style.background = "linear-gradient(90deg, rgba(0,0,0,.2), rgba(0,0,0,.5))";
+
+    // Left-side floating Reset button
+    const left = document.createElement("div");
+    left.style.cssText = "position:fixed;left:10px;bottom:10px;z-index:100001";
+    left.innerHTML = `<button id="rt-reset" title="Reset session for all viewers" style="padding:10px 14px;border:none;border-radius:8px;cursor:pointer;background:#d32f2f;color:#fff;font-weight:600;box-shadow:0 2px 6px rgba(0,0,0,.15)">Reset</button>`;
+    document.body.appendChild(left);
   })();
 
-  // Auth + presence
+  // ===== Auth + presence =====
   await signInAnonymously(auth);
   const uid = await new Promise((resolve) => onAuthStateChanged(auth, (u)=>{ if(u){ resolve(u.uid); } }));
   const presenceRef = doc(db, "sessions", customerKey, "presence", uid);
@@ -2046,14 +2051,14 @@ function generateReport(){
   setInterval(upsertPresence, 20000);
   window.addEventListener("beforeunload", async () => { try{ await setDoc(presenceRef, { lastActive: serverTimestamp(), leftAt: serverTimestamp() }, { merge:true }); }catch{} });
 
-  // Online indicator
+  // ===== Online indicator =====
   onSnapshot(collection(db, "sessions", customerKey, "presence"), (snap) => {
     const now = Date.now(); let online = 0;
     snap.forEach(d => { const t = d.data().lastActive?.toMillis?.() || 0; if (now - t < 45000) online++; });
     const el = document.getElementById("rt-online"); if (el) el.textContent = `${online} online`;
   });
 
-  // Helpers
+  // ===== Helpers =====
   const sessionRef = doc(db, "sessions", customerKey);
   const sleep = (ms)=>new Promise(r=>setTimeout(r,ms)); await sleep(200);
   function S(){ return window._AppStateRef || window.AppState || (window._AppStateRef = { runbooks:[], downtimeStarted:false, downtimePaused:false, pausedDuration:0, downtimeDuration:24, downtimeStartTime:null }); }
@@ -2101,26 +2106,25 @@ function generateReport(){
 
     lockFieldsForStarted(!!st.downtimeStarted);
 
-    try {
-      if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
-      if (typeof window.updateTimeline === "function") window.updateTimeline();
-      if (typeof window.updateClock === "function") window.updateClock();
-    } catch {}
+    try { if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
+          if (typeof window.updateTimeline === "function") window.updateTimeline();
+          if (typeof window.updateClock === "function") window.updateClock(); } catch {}
   }
 
-  // Mode — NO TAKEOVER
+  // ===== Mode — NO TAKEOVER =====
   let initialApplied=false, lastSent=null, writing=false, remoteController=null, controllerAttempted=false;
   function canWrite(){ return !viewerForced && remoteController === uid; }
   function setReadOnlyUI(ro){
     const modeEl = document.getElementById("rt-mode");
     if (modeEl) modeEl.textContent = ro ? "mode: VIEWER" : "mode: HOST";
     const nodes = document.querySelectorAll("button, input, select, textarea");
-    nodes.forEach(el => { if (!el) return; if (el.id === "rt-copy") return;
+    nodes.forEach(el => { if (!el) return; if (el.id === "rt-copy" || el.id === "rt-reset") return;
       if (ro) { el.setAttribute("disabled","true"); el.style.pointerEvents="none"; el.style.opacity="0.6"; }
       else { el.removeAttribute("disabled"); el.style.pointerEvents=""; el.style.opacity=""; } });
     lockFieldsForStarted(!!S().downtimeStarted);
     const panel = document.getElementById("rt-viewer-panel");
     if (panel) panel.style.display = ro ? "block" : "none";
+    updateViewerProgress(true);
   }
 
   // Ensure doc exists
@@ -2146,9 +2150,10 @@ function generateReport(){
       initialApplied = true;
       try { lastSent = JSON.stringify(serialize()); } catch {}
     }
+    updateViewerProgress(true);
   });
 
-  // Push
+  // ===== Push (host only) =====
   async function push(reason="debounce"){
     if (!initialApplied || !canWrite()) return;
     try{
@@ -2158,16 +2163,18 @@ function generateReport(){
       await updateDoc(sessionRef, { state: JSON.parse(nowJson), updatedAt: serverTimestamp(), reason });
       lastSent = nowJson;
     }catch(e){
-      try{ await setDoc(sessionRef, { state: serialize(), updatedAt: serverTimestamp(), reason }, { merge:true });
+      try{ await setDoc(sessionRef, { state: serialize(), updatedAt: serverTimestamp(), reason }, { merge: true });
            lastSent = JSON.stringify(serialize()); }catch(e2){ console.error("[session] write failed:", e2); }
     }finally{ writing=false; }
   }
   let timer=null;
   const schedule = () => { clearTimeout(timer); timer = setTimeout(()=>push("debounce"), 250); };
 
+  // Hook mutators
   ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility","updateScheduleTime","updateDurationTime","toggleCompleted","startTimeline","startTimer"]
     .forEach(fn => { const orig = window[fn]; if (typeof orig==="function"){ window[fn]=function(...a){ const r=orig.apply(this,a); schedule(); return r; }; } });
 
+  // Watch URL-related fields (host only)
   const watch = (id, paramName) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -2186,22 +2193,30 @@ function generateReport(){
   watch("transformCycle", "phase");
 
   ["click","change","input"].forEach(evt => document.addEventListener(evt, schedule, true));
-  setInterval(()=>push("interval"), 1000);
+  setInterval(()=>{ push("interval"); updateViewerProgress(false); }, 1000);
 
-  // Viewer progress overlay
+  // ===== Viewer progress overlay =====
   function formatLocal(dt){
     if (!dt) return "—";
     try { const d = (dt instanceof Date) ? dt : new Date(dt); return d.toLocaleString(); }
     catch { return "—"; }
   }
+  function computePercent(){
+    const s = S();
+    if (!s.downtimeStarted || !s.downtimeStartTime) return 0;
+    const start = (s.downtimeStartTime instanceof Date) ? s.downtimeStartTime : new Date(s.downtimeStartTime);
+    const durMs = (typeof s.downtimeDuration === "number" ? s.downtimeDuration : 24) * 3600 * 1000;
+    let pct = (Date.now() - start.getTime()) / durMs;
+    return Math.max(0, Math.min(1, pct));
+  }
   function updateViewerProgress(){
     const s = S();
     const panel = document.getElementById("rt-viewer-panel");
-    if (!panel || panel.style.display === "none") return;
     const startEl = document.getElementById("rt-start");
     const etaEl = document.getElementById("rt-eta");
     const bar = document.getElementById("rt-bar");
     const lbl = document.getElementById("rt-bar-label");
+    if (!panel) return;
 
     if (!s.downtimeStarted || !s.downtimeStartTime) {
       if (startEl) startEl.textContent = "—";
@@ -2215,17 +2230,57 @@ function generateReport(){
     const end = new Date(start.getTime() + durMs);
     if (startEl) startEl.textContent = formatLocal(start);
     if (etaEl) etaEl.textContent = formatLocal(end);
-    let pct = (Date.now() - start.getTime()) / durMs;
-    pct = Math.max(0, Math.min(1, pct));
+    const pct = computePercent();
     const pctStr = Math.round(pct * 100) + "%";
     if (bar) bar.style.width = pctStr;
     if (lbl) lbl.textContent = pctStr;
   }
-  setInterval(updateViewerProgress, 1000);
-  updateViewerProgress();
+
+  // ===== Reset button (HOST only) — clears customer & phase and URL =====
+  async function handleReset(){
+    if (!canWrite()) { alert("Only the host can reset the session."); return; }
+    const yes = confirm("Reset the session for ALL viewers? This will clear customer, phase, runbooks and all timing.");
+    if (!yes) return;
+
+    // Clear inputs locally first
+    const cn = document.getElementById('customerName'); if (cn) cn.value = "";
+    const tp = document.getElementById('transformCycle'); if (tp) tp.value = "";
+
+    const defaultState = {
+      runbooks: [],
+      downtimeStarted: false,
+      downtimeStartTime: null,
+      downtimeDuration: 24,
+      downtimePaused: false,
+      pausedDuration: 0,
+      customerName: "",
+      transformCycle: ""
+    };
+    try {
+      await updateDoc(sessionRef, { state: defaultState, updatedAt: serverTimestamp(), reason: "reset" });
+    } catch (e) {
+      await setDoc(sessionRef, { state: defaultState, updatedAt: serverTimestamp(), reason: "reset" }, { merge: true });
+    }
+
+    // Unlock fields
+    lockFieldsForStarted(false);
+
+    // Clear URL params: remove phase, set customer=default
+    try {
+      url.searchParams.delete('phase');
+      url.searchParams.delete('transformCycle');
+      url.searchParams.set('customer', 'default');
+      history.replaceState(null, "", url.toString());
+    } catch {}
+
+    // Force overlay/visuals update
+    updateViewerProgress();
+  }
+  const resetBtn = document.getElementById("rt-reset");
+  if (resetBtn) resetBtn.addEventListener("click", handleReset);
 </script>
 
-<!-- Bridge: expose classic-script AppState to modules -->
+<!-- Bridge to expose classic-script AppState to modules -->
 <script>
   try { if (typeof AppState !== "undefined") window._AppStateRef = AppState; } catch (e) {}
 </script>
