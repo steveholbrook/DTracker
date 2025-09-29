@@ -2337,5 +2337,52 @@ function generateReport(){
   try { if (typeof AppState !== "undefined") window._AppStateRef = AppState; } catch (e) {}
 </script>
 
-</body>
-</html>
+
+<script>
+// --- Host/Viewer live progress parity ---
+(function(){
+  function moveSharedCursorByPercent(pct){
+    // pct in [0,100]
+    const line = document.querySelector('#currentTimeLine, .timeline-now, .status-line, #currentStatusLine');
+    const label = document.querySelector('#currentTimeLabel, .timeline-cursor-label');
+    if (!line) return;
+    const parent = line.parentElement || document.body;
+    const width = parent.getBoundingClientRect().width || 1;
+    line.style.display = 'block';
+    line.style.left = (pct/100) * width + 'px';
+    if (label) {
+      // if you expose a time formatter on window, use it
+      try{
+        if (typeof window.formatElapsed === 'function') {
+          label.textContent = window.formatElapsed(pct);
+        }
+      }catch(e){}
+    }
+    const fill = document.querySelector('#timelineProgress, .timeline-progress, #progressFill, .progress-fill, .timeline-fill');
+    if (fill) fill.style.width = pct + '%';
+  }
+
+  function updateViewerTimelineVisual(){
+    // If host update exists, prefer it (ensures identical math & easing)
+    if (typeof window.updateTimeline === 'function'){
+      try { window.updateTimeline(); return; } catch(e){}
+    }
+    // Else compute a percent if app exposes it
+    let pct = NaN;
+    try{
+      if (typeof window.computePercent === 'function'){
+        pct = Math.max(0, Math.min(100, window.computePercent()*100));
+      }
+    }catch(e){}
+    if (!isFinite(pct)) return;
+    moveSharedCursorByPercent(pct);
+  }
+
+  // Run every second for all modes; function is a no-op if app isn't running
+  setInterval(updateViewerTimelineVisual, 1000);
+  // Also expose for manual calls
+  window.updateViewerTimelineVisual = updateViewerTimelineVisual;
+})();
+</script>
+
+</body></html>
