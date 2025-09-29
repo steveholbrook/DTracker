@@ -1959,7 +1959,7 @@ function generateReport(){
 </script>
 
 
-<!-- === Firebase realtime sync (listen-first) — NO-TAKEOVER + FIELD LOCKS === -->
+<!-- === Firebase realtime sync — NO-TAKEOVER + locked fields + URL phase + viewer progress === -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -1979,22 +1979,36 @@ function generateReport(){
   const db = getFirestore(app);
   const auth = getAuth(app);
 
-  // URL params
+  // URL params (support ?phase= or ?transformCycle=)
   const url = new URL(window.location.href);
   let customerParam = url.searchParams.get("customer") || "";
+  let phaseParam = url.searchParams.get("phase") || url.searchParams.get("transformCycle") || "";
   const viewerForced = url.searchParams.get("viewer") === "1";
+
   const nameInput = document.getElementById("customerName");
   const phaseInput = document.getElementById("transformCycle");
+
   if (!customerParam && nameInput && nameInput.value) customerParam = nameInput.value;
+  if (!phaseParam && phaseInput && phaseInput.value) phaseParam = phaseInput.value;
+
   const toKey = s => (s||"default").toString().trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"") || "default";
   const customerKey = toKey(customerParam);
-  if (!url.searchParams.get("customer")) { url.searchParams.set("customer", customerParam || "default"); history.replaceState(null, "", url.toString()); }
-  if (nameInput && customerParam) nameInput.value = customerParam;
 
-  // Overlay (mode + online)
+  if (!url.searchParams.get("customer")) { url.searchParams.set("customer", customerParam || "default"); }
+  if (phaseParam && !url.searchParams.get("phase") && !url.searchParams.get("transformCycle")) {
+    url.searchParams.set("phase", phaseParam);
+  }
+  if (!url.searchParams.get("customer") || (phaseParam && !url.searchParams.get("phase"))) {
+    history.replaceState(null, "", url.toString());
+  }
+
+  if (nameInput && customerParam) nameInput.value = customerParam;
+  if (phaseInput && phaseParam) phaseInput.value = phaseParam;
+
+  // Overlay (mode + online + viewer progress)
   (function overlay(){
     const box = document.createElement("div");
-    box.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:99999;min-width:220px";
+    box.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:99999;min-width:260px";
     box.innerHTML = `<div style="display:flex;gap:6px;align-items:center;justify-content:space-between;margin-bottom:6px;">
         <div><strong>Customer:</strong> <span id="rt-customer" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${customerParam || "default"}</span></div>
         <button id="rt-copy" style="padding:4px 8px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#f9f9fb;">Copy link</button>
@@ -2002,15 +2016,25 @@ function generateReport(){
       <div style="display:flex;gap:6px;align-items:center;justify-content:space-between;">
         <span id="rt-online" style="display:inline-block;padding:2px 8px;border:1px solid #dcdcdc;border-radius:999px;">0 online</span>
         <span id="rt-mode" style="font-weight:600;color:#444">mode: —</span>
+      </div>
+      <div id="rt-viewer-panel" style="display:none;margin-top:8px">
+        <div style="font-size:12px;margin-bottom:4px"><b>Start:</b> <span id="rt-start">—</span></div>
+        <div style="font-size:12px;margin-bottom:6px"><b>ETA:</b> <span id="rt-eta">—</span></div>
+        <div style="position:relative;height:10px;border:1px solid #dcdcdc;border-radius:999px;overflow:hidden;background:#f2f3f6">
+          <div id="rt-bar" style="position:absolute;left:0;top:0;bottom:0;width:0%"></div>
+        </div>
+        <div id="rt-bar-label" style="font-size:11px;margin-top:4px;text-align:right">0%</div>
       </div>`;
     document.body.appendChild(box);
     document.getElementById("rt-copy").onclick = async () => {
       await navigator.clipboard.writeText(window.location.href);
       const btn = document.getElementById("rt-copy"); const prev = btn.textContent; btn.textContent="Copied"; setTimeout(()=>btn.textContent=prev, 1000);
     };
+    const bar = box.querySelector("#rt-bar");
+    bar.style.background = "linear-gradient(90deg, rgba(0,0,0,.15), rgba(0,0,0,.35))";
   })();
 
-  // Auth + presence (plain UID doc id)
+  // Auth + presence
   await signInAnonymously(auth);
   const uid = await new Promise((resolve) => onAuthStateChanged(auth, (u)=>{ if(u){ resolve(u.uid); } }));
   const presenceRef = doc(db, "sessions", customerKey, "presence", uid);
@@ -2022,34 +2046,23 @@ function generateReport(){
   setInterval(upsertPresence, 20000);
   window.addEventListener("beforeunload", async () => { try{ await setDoc(presenceRef, { lastActive: serverTimestamp(), leftAt: serverTimestamp() }, { merge:true }); }catch{} });
 
-  // Online count
+  // Online indicator
   onSnapshot(collection(db, "sessions", customerKey, "presence"), (snap) => {
     const now = Date.now(); let online = 0;
     snap.forEach(d => { const t = d.data().lastActive?.toMillis?.() || 0; if (now - t < 45000) online++; });
     const el = document.getElementById("rt-online"); if (el) el.textContent = `${online} online`;
   });
 
+  // Helpers
   const sessionRef = doc(db, "sessions", customerKey);
   const sleep = (ms)=>new Promise(r=>setTimeout(r,ms)); await sleep(200);
-
-  // Safe access to app state
   function S(){ return window._AppStateRef || window.AppState || (window._AppStateRef = { runbooks:[], downtimeStarted:false, downtimePaused:false, pausedDuration:0, downtimeDuration:24, downtimeStartTime:null }); }
 
-  // Apply read-only style to specific fields
   function lockFieldsForStarted(started){
     const lock = (el, yes) => {
       if (!el) return;
-      if (yes) {
-        el.setAttribute("disabled","true");
-        el.style.pointerEvents = "none";
-        el.style.opacity = "0.7";
-        el.title = "Locked while timeline is running";
-      } else {
-        el.removeAttribute("disabled");
-        el.style.pointerEvents = "";
-        el.style.opacity = "";
-        el.title = "";
-      }
+      if (yes) { el.setAttribute("disabled","true"); el.style.pointerEvents="none"; el.style.opacity="0.7"; el.title="Locked while timeline is running"; }
+      else { el.removeAttribute("disabled"); el.style.pointerEvents=""; el.style.opacity=""; el.title=""; }
     };
     lock(document.getElementById("customerName"), !!started);
     lock(document.getElementById("transformCycle"), !!started);
@@ -2057,7 +2070,6 @@ function generateReport(){
 
   function serialize(){
     const s = S();
-    // also capture UI fields so they mirror everywhere
     const cn = (document.getElementById("customerName") || {}).value || "";
     const tp = (document.getElementById("transformCycle") || {}).value || "";
     return {
@@ -2082,52 +2094,34 @@ function generateReport(){
       downtimeStartTime: st.downtimeStartTime ? new Date(st.downtimeStartTime) : null
     });
 
-    // Mirror UI fields to local controls
     const cn = document.getElementById("customerName");
     const tp = document.getElementById("transformCycle");
     if (cn && typeof st.customerName === "string" && cn.value !== st.customerName) cn.value = st.customerName;
     if (tp && typeof st.transformCycle === "string" && tp.value !== st.transformCycle) tp.value = st.transformCycle;
 
-    // Lock fields if timeline started
     lockFieldsForStarted(!!st.downtimeStarted);
 
-    try{
+    try {
       if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
       if (typeof window.updateTimeline === "function") window.updateTimeline();
       if (typeof window.updateClock === "function") window.updateClock();
-    }catch{}
+    } catch {}
   }
 
-  // Mode handling (HOST/VIEWER) — no takeover
-  let initialApplied = false;
-  let lastSent = null;
-  let writing = false;
-  let remoteController = null;
-  let controllerAttempted = false;
-
+  // Mode — NO TAKEOVER
+  let initialApplied=false, lastSent=null, writing=false, remoteController=null, controllerAttempted=false;
+  function canWrite(){ return !viewerForced && remoteController === uid; }
   function setReadOnlyUI(ro){
     const modeEl = document.getElementById("rt-mode");
     if (modeEl) modeEl.textContent = ro ? "mode: VIEWER" : "mode: HOST";
     const nodes = document.querySelectorAll("button, input, select, textarea");
-    nodes.forEach(el => {
-      if (!el) return;
-      if (el.id === "rt-copy") return;
-      if (ro) {
-        el.setAttribute("disabled","true");
-        el.style.pointerEvents = "none";
-        el.style.opacity = "0.6";
-      } else {
-        el.removeAttribute("disabled");
-        el.style.pointerEvents = "";
-        el.style.opacity = "";
-      }
-    });
-    // Re-apply specific locks based on current state
-    const cur = S();
-    lockFieldsForStarted(!!cur.downtimeStarted);
+    nodes.forEach(el => { if (!el) return; if (el.id === "rt-copy") return;
+      if (ro) { el.setAttribute("disabled","true"); el.style.pointerEvents="none"; el.style.opacity="0.6"; }
+      else { el.removeAttribute("disabled"); el.style.pointerEvents=""; el.style.opacity=""; } });
+    lockFieldsForStarted(!!S().downtimeStarted);
+    const panel = document.getElementById("rt-viewer-panel");
+    if (panel) panel.style.display = ro ? "block" : "none";
   }
-
-  function canWrite(){ return !viewerForced && remoteController === uid; }
 
   // Ensure doc exists
   try {
@@ -2141,11 +2135,9 @@ function generateReport(){
     remoteController = data.controllerUid || null;
     if (data.state) applyRemoteState(data.state);
 
-    // First writer claims controller if none
     if (!remoteController && !controllerAttempted && !viewerForced) {
       controllerAttempted = true;
-      try { await setDoc(sessionRef, { controllerUid: uid, controllerSetAt: serverTimestamp() }, { merge:true }); }
-      catch (e) { /* someone else won; ignore */ }
+      try { await setDoc(sessionRef, { controllerUid: uid, controllerSetAt: serverTimestamp() }, { merge:true }); } catch {}
     }
 
     setReadOnlyUI(!canWrite());
@@ -2156,7 +2148,7 @@ function generateReport(){
     }
   });
 
-  // Push (only host)
+  // Push
   async function push(reason="debounce"){
     if (!initialApplied || !canWrite()) return;
     try{
@@ -2166,35 +2158,74 @@ function generateReport(){
       await updateDoc(sessionRef, { state: JSON.parse(nowJson), updatedAt: serverTimestamp(), reason });
       lastSent = nowJson;
     }catch(e){
-      try{
-        await setDoc(sessionRef, { state: serialize(), updatedAt: serverTimestamp(), reason }, { merge:true });
-        lastSent = JSON.stringify(serialize());
-      }catch(e2){ console.error("[session] write failed:", e2); }
+      try{ await setDoc(sessionRef, { state: serialize(), updatedAt: serverTimestamp(), reason }, { merge:true });
+           lastSent = JSON.stringify(serialize()); }catch(e2){ console.error("[session] write failed:", e2); }
     }finally{ writing=false; }
   }
-
   let timer=null;
-  function schedule(){ clearTimeout(timer); timer = setTimeout(()=>push("debounce"), 250); }
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(()=>push("debounce"), 250); };
 
-  // Hook mutators; pushes are gated by canWrite()
   ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility","updateScheduleTime","updateDurationTime","toggleCompleted","startTimeline","startTimer"]
     .forEach(fn => { const orig = window[fn]; if (typeof orig==="function"){ window[fn]=function(...a){ const r=orig.apply(this,a); schedule(); return r; }; } });
 
-  // Also push when specific fields change (only if still editable)
-  const watch = (id) => {
+  const watch = (id, paramName) => {
     const el = document.getElementById(id);
     if (!el) return;
-    el.addEventListener("change", schedule, true);
-    el.addEventListener("input", schedule, true);
+    el.addEventListener("change", () => {
+      schedule();
+      if (canWrite()) {
+        const v = el.value || "";
+        if (paramName === "customer") url.searchParams.set("customer", v || "default");
+        if (paramName === "phase") url.searchParams.set("phase", v);
+        history.replaceState(null, "", url.toString());
+      }
+    }, true);
+    el.addEventListener("input", () => { if (canWrite()) schedule(); }, true);
   };
-  watch("customerName");
-  watch("transformCycle");
+  watch("customerName", "customer");
+  watch("transformCycle", "phase");
 
   ["click","change","input"].forEach(evt => document.addEventListener(evt, schedule, true));
   setInterval(()=>push("interval"), 1000);
+
+  // Viewer progress overlay
+  function formatLocal(dt){
+    if (!dt) return "—";
+    try { const d = (dt instanceof Date) ? dt : new Date(dt); return d.toLocaleString(); }
+    catch { return "—"; }
+  }
+  function updateViewerProgress(){
+    const s = S();
+    const panel = document.getElementById("rt-viewer-panel");
+    if (!panel || panel.style.display === "none") return;
+    const startEl = document.getElementById("rt-start");
+    const etaEl = document.getElementById("rt-eta");
+    const bar = document.getElementById("rt-bar");
+    const lbl = document.getElementById("rt-bar-label");
+
+    if (!s.downtimeStarted || !s.downtimeStartTime) {
+      if (startEl) startEl.textContent = "—";
+      if (etaEl) etaEl.textContent = "—";
+      if (bar) bar.style.width = "0%";
+      if (lbl) lbl.textContent = "0%";
+      return;
+    }
+    const start = (s.downtimeStartTime instanceof Date) ? s.downtimeStartTime : new Date(s.downtimeStartTime);
+    const durMs = (typeof s.downtimeDuration === "number" ? s.downtimeDuration : 24) * 3600 * 1000;
+    const end = new Date(start.getTime() + durMs);
+    if (startEl) startEl.textContent = formatLocal(start);
+    if (etaEl) etaEl.textContent = formatLocal(end);
+    let pct = (Date.now() - start.getTime()) / durMs;
+    pct = Math.max(0, Math.min(1, pct));
+    const pctStr = Math.round(pct * 100) + "%";
+    if (bar) bar.style.width = pctStr;
+    if (lbl) lbl.textContent = pctStr;
+  }
+  setInterval(updateViewerProgress, 1000);
+  updateViewerProgress();
 </script>
 
-<!-- Bridge for classic scripts -->
+<!-- Bridge: expose classic-script AppState to modules -->
 <script>
   try { if (typeof AppState !== "undefined") window._AppStateRef = AppState; } catch (e) {}
 </script>

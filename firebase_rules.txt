@@ -2,18 +2,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Shared state per customer
     match /sessions/{customer} {
       allow read: if true;
 
-      // Create allowed by any signed-in user; they may set controllerUid to themselves,
-      // or omit it (it'll be set later). No one can set it to someone else.
       allow create: if request.auth != null
                     && (!('controllerUid' in request.resource.data) || request.resource.data.controllerUid == request.auth.uid);
 
-      // Update rules:
-      // - If controllerUid is ALREADY set, only that controller may update, and controllerUid must not change.
-      // - If controllerUid is NOT set yet, the first writer may set it to their own UID.
       allow update: if request.auth != null && (
                       (('controllerUid' in resource.data) &&
                        request.auth.uid == resource.data.controllerUid &&
@@ -23,11 +17,9 @@ service cloud.firestore {
                        request.resource.data.controllerUid == request.auth.uid)
                     );
 
-      // Optional: block deletes entirely
       allow delete: if false;
     }
 
-    // Presence (who's online) — doc id MUST equal the user's UID
     match /sessions/{customer}/presence/{uid} {
       allow read: if true;
       allow write: if request.auth != null && request.auth.uid == uid;
