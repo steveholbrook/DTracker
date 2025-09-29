@@ -1959,7 +1959,7 @@ function generateReport(){
 </script>
 
 
-<!-- === Firebase realtime sync — NO-TAKEOVER + locked fields + URL phase + viewer progress + RESET clears Customer/Phase === -->
+<!-- === Firebase realtime sync — NO-TAKEOVER + locked fields + URL phase + viewer overlay + Reset + Viewer Status & Timeline === -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -1979,7 +1979,7 @@ function generateReport(){
   const db = getFirestore(app);
   const auth = getAuth(app);
 
-  // URL params (support both ?phase= and ?transformCycle=)
+  // URL params (support ?phase= or ?transformCycle=)
   const url = new URL(window.location.href);
   let customerParam = url.searchParams.get("customer") || "";
   let phaseParam = url.searchParams.get("phase") || url.searchParams.get("transformCycle") || "";
@@ -2007,7 +2007,7 @@ function generateReport(){
   // ===== Overlay (mode + online + viewer progress + Reset button) =====
   (function overlay(){
     const right = document.createElement("div");
-    right.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:100000;min-width:260px";
+    right.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:100000;min-width:280px";
     right.innerHTML = `<div style="display:flex;gap:6px;align-items:center;justify-content:space-between;margin-bottom:6px;">
         <div><strong>Customer:</strong> <span id="rt-customer" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${customerParam || "default"}</span></div>
         <button id="rt-copy" style="padding:4px 8px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#f9f9fb;">Copy link</button>
@@ -2017,6 +2017,7 @@ function generateReport(){
         <span id="rt-mode" style="font-weight:600;color:#444">mode: —</span>
       </div>
       <div id="rt-viewer-panel" style="display:none;margin-top:8px">
+        <div style="font-size:12px;margin-bottom:2px"><b>Status:</b> <span id="rt-status">—</span></div>
         <div style="font-size:12px;margin-bottom:4px"><b>Start:</b> <span id="rt-start">—</span></div>
         <div style="font-size:12px;margin-bottom:6px"><b>ETA:</b> <span id="rt-eta">—</span></div>
         <div style="position:relative;height:10px;border:1px solid #dcdcdc;border-radius:999px;overflow:hidden;background:#f2f3f6">
@@ -2037,6 +2038,13 @@ function generateReport(){
     left.style.cssText = "position:fixed;left:10px;bottom:10px;z-index:100001";
     left.innerHTML = `<button id="rt-reset" title="Reset session for all viewers" style="padding:10px 14px;border:none;border-radius:8px;cursor:pointer;background:#d32f2f;color:#fff;font-weight:600;box-shadow:0 2px 6px rgba(0,0,0,.15)">Reset</button>`;
     document.body.appendChild(left);
+
+    // Viewer top status banner (only visible in VIEWER)
+    const top = document.createElement("div");
+    top.id = "rt-status-banner";
+    top.style.cssText = "position:fixed;top:6px;left:50%;transform:translateX(-50%);padding:6px 10px;background:#fff;border:1px solid #dcdcdc;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.08);font:13px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;z-index:100002;display:none";
+    top.innerHTML = `<b>Status:</b> <span id="rt-status-top">—</span>`;
+    document.body.appendChild(top);
   })();
 
   // ===== Auth + presence =====
@@ -2088,6 +2096,78 @@ function generateReport(){
       transformCycle: tp
     };
   }
+
+  // ===== Viewer UI helpers =====
+  function statusString(s){
+    const now = Date.now();
+    if (!s.downtimeStarted || !s.downtimeStartTime) return "Not started";
+    const start = (s.downtimeStartTime instanceof Date) ? s.downtimeStartTime : new Date(s.downtimeStartTime);
+    const endMs = start.getTime() + (s.downtimeDuration||24)*3600*1000;
+    if (s.downtimePaused) return "Paused";
+    if (now >= endMs) return "Completed";
+    return "Running";
+  }
+  function updateViewerStatusBanner(){
+    const s = S();
+    const isViewer = !canWrite();
+    const banner = document.getElementById("rt-status-banner");
+    const topTxt = document.getElementById("rt-status-top");
+    const panelTxt = document.getElementById("rt-status");
+    const text = statusString(s);
+    if (panelTxt) panelTxt.textContent = text;
+    if (banner) {
+      banner.style.display = isViewer ? "block" : "none";
+      if (topTxt) topTxt.textContent = text;
+    }
+  }
+  function computePercent(){
+    const s = S();
+    if (!s.downtimeStarted || !s.downtimeStartTime) return 0;
+    const start = (s.downtimeStartTime instanceof Date) ? s.downtimeStartTime : new Date(s.downtimeStartTime);
+    const durMs = (typeof s.downtimeDuration === "number" ? s.downtimeDuration : 24) * 3600 * 1000;
+    let pct = (Date.now() - start.getTime()) / durMs;
+    pct = Math.max(0, Math.min(1, pct));
+    return pct;
+  }
+  function updateViewerProgress(){
+    const s = S();
+    const startEl = document.getElementById("rt-start");
+    const etaEl = document.getElementById("rt-eta");
+    const bar = document.getElementById("rt-bar");
+    const lbl = document.getElementById("rt-bar-label");
+    const pct = computePercent();
+    if (!s.downtimeStarted || !s.downtimeStartTime) {
+      if (startEl) startEl.textContent = "—";
+      if (etaEl) etaEl.textContent = "—";
+      if (bar) bar.style.width = "0%";
+      if (lbl) lbl.textContent = "0%";
+      return;
+    }
+    const start = (s.downtimeStartTime instanceof Date) ? s.downtimeStartTime : new Date(s.downtimeStartTime);
+    const durMs = (typeof s.downtimeDuration === "number" ? s.downtimeDuration : 24) * 3600 * 1000;
+    const end = new Date(start.getTime() + durMs);
+    if (startEl) startEl.textContent = start.toLocaleString();
+    if (etaEl) etaEl.textContent = end.toLocaleString();
+    const pctStr = Math.round(pct * 100) + "%";
+    if (bar) bar.style.width = pctStr;
+    if (lbl) lbl.textContent = pctStr;
+  }
+  function updateViewerTimelineVisual(){
+    if (typeof window.updateTimeline === "function") { 
+      try { window.updateTimeline(); return; } catch {}
+    }
+    const pct = computePercent() * 100;
+    const cursor = document.querySelector("#statusLine, .status-line, #currentStatusLine, .timeline-now, .timeline-cursor");
+    if (cursor) {
+      cursor.style.left = pct + "%";
+      cursor.style.transform = "translateX(-50%)";
+    }
+    const fill = document.querySelector("#timelineProgress, .timeline-progress, #progressFill, .progress-fill, .timeline-fill");
+    if (fill) {
+      fill.style.width = pct + "%";
+    }
+  }
+
   function applyRemoteState(st){
     const s = S();
     Object.assign(s, {
@@ -2106,9 +2186,14 @@ function generateReport(){
 
     lockFieldsForStarted(!!st.downtimeStarted);
 
-    try { if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
-          if (typeof window.updateTimeline === "function") window.updateTimeline();
-          if (typeof window.updateClock === "function") window.updateClock(); } catch {}
+    try {
+      if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
+      if (typeof window.updateClock === "function") window.updateClock();
+    } catch {}
+
+    updateViewerStatusBanner();
+    updateViewerProgress();
+    updateViewerTimelineVisual();
   }
 
   // ===== Mode — NO TAKEOVER =====
@@ -2124,7 +2209,11 @@ function generateReport(){
     lockFieldsForStarted(!!S().downtimeStarted);
     const panel = document.getElementById("rt-viewer-panel");
     if (panel) panel.style.display = ro ? "block" : "none";
-    updateViewerProgress(true);
+    const statusBanner = document.getElementById("rt-status-banner");
+    if (statusBanner) statusBanner.style.display = ro ? "block" : "none";
+    updateViewerStatusBanner();
+    updateViewerProgress();
+    updateViewerTimelineVisual();
   }
 
   // Ensure doc exists
@@ -2133,7 +2222,7 @@ function generateReport(){
     if (!s.exists()) await setDoc(sessionRef, { state: serialize(), updatedAt: serverTimestamp() }, { merge:true });
   } catch(e){ console.error("[session] ensure failed:", e); }
 
-  // Subscribe
+  // Subscribe to session
   onSnapshot(sessionRef, async (snap) => {
     const data = snap.data() || {};
     remoteController = data.controllerUid || null;
@@ -2150,7 +2239,6 @@ function generateReport(){
       initialApplied = true;
       try { lastSent = JSON.stringify(serialize()); } catch {}
     }
-    updateViewerProgress(true);
   });
 
   // ===== Push (host only) =====
@@ -2163,7 +2251,7 @@ function generateReport(){
       await updateDoc(sessionRef, { state: JSON.parse(nowJson), updatedAt: serverTimestamp(), reason });
       lastSent = nowJson;
     }catch(e){
-      try{ await setDoc(sessionRef, { state: serialize(), updatedAt: serverTimestamp(), reason }, { merge: true });
+      try{ await setDoc(sessionRef, { state: serialize(), updatedAt: serverTimestamp(), reason }, { merge:true });
            lastSent = JSON.stringify(serialize()); }catch(e2){ console.error("[session] write failed:", e2); }
     }finally{ writing=false; }
   }
@@ -2174,7 +2262,7 @@ function generateReport(){
   ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility","updateScheduleTime","updateDurationTime","toggleCompleted","startTimeline","startTimer"]
     .forEach(fn => { const orig = window[fn]; if (typeof orig==="function"){ window[fn]=function(...a){ const r=orig.apply(this,a); schedule(); return r; }; } });
 
-  // Watch URL-related fields (host only)
+  // Watch URL-related fields (host)
   const watch = (id, paramName) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -2192,57 +2280,22 @@ function generateReport(){
   watch("customerName", "customer");
   watch("transformCycle", "phase");
 
-  ["click","change","input"].forEach(evt => document.addEventListener(evt, schedule, true));
-  setInterval(()=>{ push("interval"); updateViewerProgress(false); }, 1000);
-
-  // ===== Viewer progress overlay =====
-  function formatLocal(dt){
-    if (!dt) return "—";
-    try { const d = (dt instanceof Date) ? dt : new Date(dt); return d.toLocaleString(); }
-    catch { return "—"; }
-  }
-  function computePercent(){
-    const s = S();
-    if (!s.downtimeStarted || !s.downtimeStartTime) return 0;
-    const start = (s.downtimeStartTime instanceof Date) ? s.downtimeStartTime : new Date(s.downtimeStartTime);
-    const durMs = (typeof s.downtimeDuration === "number" ? s.downtimeDuration : 24) * 3600 * 1000;
-    let pct = (Date.now() - start.getTime()) / durMs;
-    return Math.max(0, Math.min(1, pct));
-  }
-  function updateViewerProgress(){
-    const s = S();
-    const panel = document.getElementById("rt-viewer-panel");
-    const startEl = document.getElementById("rt-start");
-    const etaEl = document.getElementById("rt-eta");
-    const bar = document.getElementById("rt-bar");
-    const lbl = document.getElementById("rt-bar-label");
-    if (!panel) return;
-
-    if (!s.downtimeStarted || !s.downtimeStartTime) {
-      if (startEl) startEl.textContent = "—";
-      if (etaEl) etaEl.textContent = "—";
-      if (bar) bar.style.width = "0%";
-      if (lbl) lbl.textContent = "0%";
-      return;
+  // Periodic viewer refresh ticks
+  setInterval(() => {
+    if (!canWrite()) {
+      updateViewerStatusBanner();
+      updateViewerProgress();
+      updateViewerTimelineVisual();
+      if (typeof window.updateClock === "function") { try { window.updateClock(); } catch {} }
     }
-    const start = (s.downtimeStartTime instanceof Date) ? s.downtimeStartTime : new Date(s.downtimeStartTime);
-    const durMs = (typeof s.downtimeDuration === "number" ? s.downtimeDuration : 24) * 3600 * 1000;
-    const end = new Date(start.getTime() + durMs);
-    if (startEl) startEl.textContent = formatLocal(start);
-    if (etaEl) etaEl.textContent = formatLocal(end);
-    const pct = computePercent();
-    const pctStr = Math.round(pct * 100) + "%";
-    if (bar) bar.style.width = pctStr;
-    if (lbl) lbl.textContent = pctStr;
-  }
+  }, 1000);
 
-  // ===== Reset button (HOST only) — clears customer & phase and URL =====
+  // ===== Reset (HOST-only) — clears customer & phase and URL =====
   async function handleReset(){
     if (!canWrite()) { alert("Only the host can reset the session."); return; }
     const yes = confirm("Reset the session for ALL viewers? This will clear customer, phase, runbooks and all timing.");
     if (!yes) return;
 
-    // Clear inputs locally first
     const cn = document.getElementById('customerName'); if (cn) cn.value = "";
     const tp = document.getElementById('transformCycle'); if (tp) tp.value = "";
 
@@ -2262,25 +2315,24 @@ function generateReport(){
       await setDoc(sessionRef, { state: defaultState, updatedAt: serverTimestamp(), reason: "reset" }, { merge: true });
     }
 
-    // Unlock fields
     lockFieldsForStarted(false);
 
-    // Clear URL params: remove phase, set customer=default
     try {
       url.searchParams.delete('phase');
       url.searchParams.delete('transformCycle');
-      url.searchParams.set('customer', 'default');
+      url.searchParams.set('customer','default');
       history.replaceState(null, "", url.toString());
     } catch {}
 
-    // Force overlay/visuals update
+    updateViewerStatusBanner();
     updateViewerProgress();
+    updateViewerTimelineVisual();
   }
   const resetBtn = document.getElementById("rt-reset");
   if (resetBtn) resetBtn.addEventListener("click", handleReset);
 </script>
 
-<!-- Bridge to expose classic-script AppState to modules -->
+<!-- Bridge for classic scripts -->
 <script>
   try { if (typeof AppState !== "undefined") window._AppStateRef = AppState; } catch (e) {}
 </script>
