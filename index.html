@@ -2247,6 +2247,8 @@ function generateReport(){
     if (tp && typeof st.transformCycle === "string" && tp.value !== st.transformCycle) tp.value = st.transformCycle;
 
     lockFieldsForStarted(!!st.downtimeStarted);
+    try { if (typeof window.updateTimeline === "function") window.updateTimeline(); } catch {}
+
 
     try {
       if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
