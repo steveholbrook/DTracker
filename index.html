@@ -569,15 +569,14 @@
   }
   
   .current-time-line{
-    position:absolute;
-    /* Position the current-time indicator immediately below the 20px scale */
-    top:20px;
-    bottom:0;
-    width:2px;
-    background:var(--sap-error);
-    z-index:15;
-    pointer-events:none;
-  }
+  position:absolute;
+  top:0;
+  bottom:0;
+  width:2px;
+  background:red;
+  z-index:9999;
+  pointer-events:none;
+}
   
   .current-time-label{
     position:absolute;
@@ -864,59 +863,6 @@
 }
 .timeline-control-row{ height: 24px !important; }
 .timeline-control-cell{ display:flex; align-items:center; height:24px; }
-
-/* --- Row alignment hardening --- */
-.timeline-row, .timeline-control-row, .timeline-control-cell{
-  box-sizing: border-box;
-  height: 20px !important;
-  line-height: 20px;
-  padding-top: 0;
-  padding-bottom: 0;
-  margin: 0;
-}
-
-
-.current-time-line{
-  position:absolute;
-  top:0;
-  bottom:0;
-  width:2px;
-  background:red;
-  z-index:9999;
-  pointer-events:none;
-}
-/* === Viewer Read-Only Mode === */
-.viewer-readonly input,
-.viewer-readonly select,
-.viewer-readonly textarea,
-.viewer-readonly button {
-  pointer-events: none;
-}
-.viewer-readonly input[disabled],
-.viewer-readonly select[disabled],
-.viewer-readonly textarea[disabled],
-.viewer-readonly button[disabled] {
-  opacity: 0.85; /* keep readable */
-}
-.viewer-readonly .timeline-track,
-.viewer-readonly .timeline-control-row,
-.viewer-readonly .timeline-control-cell {
-  pointer-events: none;
-}
-
-
-/* === Live tracker visibility & anchoring === */
-#timelineBody{ position: relative; }
-.current-time-line{
-  position:absolute;
-  top:0;
-  bottom:0;
-  width:2px;
-  background:red;
-  z-index:9999;
-  pointer-events:none;
-}
-
 </style>
 
   <!--
@@ -1422,13 +1368,7 @@ function updateTimeline() {
     // Ensure the finish line spans the height of the scrollable area
     finishLine.style.display = 'block';
   }
-
-  try{ ensureRowAlignment(); }catch(e){}
-
-  try{ enforceViewerReadOnly(); }catch(e){}
 }
-
-
 
 function generateTimeScale(hours) {
   const scale = document.getElementById('timelineScale');
@@ -1453,18 +1393,18 @@ function generateTimelineRows() {
   // Containers for track rows and control rows
   const trackContainer = document.getElementById('timelineRows');
   const controlsContainer = document.getElementById('timelineControlsRows');
-  // Ensure both containers exist (timelineControlsRows may not exist on initial load)
   if (trackContainer) trackContainer.innerHTML = '';
   if (controlsContainer) controlsContainer.innerHTML = '';
   
-  // Sort runbooks by sequence
-  const sortedRunbooks = [...AppState.runbooks].sort((a, b) => a.sequence - b.sequence);
-  
+  // Sort and FILTER: only include rows with a non-empty runblock
+  const sortedRunbooks = [...AppState.runbooks]
+    .sort((a, b) => a.sequence - b.sequence)
+    .filter(rb => (rb && (rb.runblock || '').trim().length > 0));
+
+  // Render only visible runbooks
   sortedRunbooks.forEach((runbook, index) => {
-    // Create track row for the left scrollable area
     const trackRow = createTimelineRow(runbook, index);
     if (trackContainer) trackContainer.appendChild(trackRow);
-    // Create control row for the right fixed area
     const controlRow = createTimelineControlRow(runbook);
     if (controlsContainer) controlsContainer.appendChild(controlRow);
   });
@@ -1772,6 +1712,8 @@ function toggleCompleted(id, checked) {
 }
 
 function startDowntime() {
+  { const l=document.getElementById('currentTimeLine'); if(l) l.style.display='block'; }
+
   AppState.downtimeStarted = true;
   AppState.downtimeStartTime = new Date();
   AppState.pausedDuration = 0;
@@ -1835,6 +1777,8 @@ function pauseDowntime() {
 }
 
 function resumeDowntime() {
+  { const l=document.getElementById('currentTimeLine'); if(l) l.style.display='block'; }
+
   if (AppState.downtimePaused) {
     const pauseDuration = new Date() - AppState.pauseStartTime;
     AppState.pausedDuration += pauseDuration;
@@ -1898,6 +1842,7 @@ function updateProgressIndicators() {
   const linePosition = Math.min(elapsed * pixelsPerHour, AppState.downtimeDuration * pixelsPerHour);
   const currentLine = document.getElementById('currentTimeLine');
   currentLine.style.left = `${linePosition}px`;
+  currentLine.style.display = 'block';
   
   // Calculate elapsed time in HH:MM:SS format
   const totalSeconds = Math.floor(elapsedMs / 1000);
@@ -2054,106 +1999,10 @@ function generateReport(){
     window.addEventListener('load', function() {
       navigator.serviceWorker.register('service-worker.js')
         .catch(function(err) {
-          console.error('Service worker registrati
-try{ window.addEventListener('resize', ensureRowAlignment, {passive:true}); }catch(e){}
-try{ if (document.fonts && document.fonts.ready){ document.fonts.ready.then(()=> ensureRowAlignment()); } }catch(e){}
-
-(function setupScrollSync(){
-  try{
-    const leftPane = document.getElementById('timelineRows')?.parentElement;
-    const rightPane = document.getElementById('timelineControlsRows')?.parentElement;
-    if (!leftPane || !rightPane) return;
-    let syncing = false;
-    leftPane.addEventListener('scroll', ()=>{ if (syncing) return; syncing = true; rightPane.scrollTop = leftPane.scrollTop; syncing=false; }, {passive:true});
-    rightPane.addEventListener('scroll', ()=>{ if (syncing) return; syncing = true; leftPane.scrollTop = rightPane.scrollTop; syncing=false; }, {passive:true});
-  }catch(e){}
-})();
-on failed:', err);
+          console.error('Service worker registration failed:', err);
         });
     });
   }
-
-function ensureRowAlignment(){
-  try{
-    const rows = Array.from(document.querySelectorAll('#timelineRows .timeline-row'));
-    const ctrls = Array.from(document.querySelectorAll('#timelineControlsRows .timeline-control-row'));
-    const n = Math.min(rows.length, ctrls.length);
-    for (let i=0; i<n; i++){
-      const h = Math.max(20, Math.round(rows[i].getBoundingClientRect().height));
-      rows[i].style.height = h + 'px';
-      ctrls[i].style.height = h + 'px';
-      const cells = ctrls[i].querySelectorAll('.timeline-control-cell');
-      cells.forEach(c => { c.style.height = h + 'px'; c.style.lineHeight = h + 'px'; });
-    }
-  }catch(e){}
-}
-
-// Keep viewer progress line moving even without host interaction
-(function ensureViewerTicker(){
-  try {
-    if (!window.__viewerTicker){
-      window.__viewerTicker = setInterval(function(){
-        if (typeof updateViewerTimelineVisual === 'function' && !canWrite()){
-          updateViewerTimelineVisual();
-        }
-      }, 1000);
-    }
-  } catch(e){}
-})();
-
-// Apply viewer read-only on load
-try{ enforceViewerReadOnly(); }catch(e){}
-
-// Force all fields to display-only in Viewer mode
-function enforceViewerReadOnly(){
-  try{
-    var isViewer = (typeof canWrite === 'function') ? !canWrite() : false;
-    document.body.classList.toggle('viewer-readonly', !!isViewer);
-    var ctrls = document.querySelectorAll('input, select, textarea, button');
-    for (var i=0; i<ctrls.length; i++){
-      var el = ctrls[i];
-      if (isViewer){
-        el.setAttribute('disabled','disabled');
-        el.setAttribute('aria-disabled','true');
-        if (el.tagName==='INPUT' && (el.type==='text' || el.type==='number')) el.readOnly = true;
-      } else {
-        // Only re-enable controls that we explicitly disabled (avoid overriding app's own locks)
-        if (el.getAttribute('aria-disabled') === 'true'){
-          el.removeAttribute('disabled');
-          el.removeAttribute('aria-disabled');
-          if (el.tagName==='INPUT') el.readOnly = false;
-        }
-      }
-    }
-  }catch(e){}
-}
-
-// Normalize downtimeStartTime to a Date
-function __toDate__(val){
-  try{
-    if (!val) return null;
-    if (val instanceof Date) return val;
-    if (typeof val === 'number') {
-      // assume ms since epoch
-      return new Date(val);
-    }
-    if (typeof val === 'string'){
-      const d = new Date(val);
-      return isNaN(d.getTime()) ? null : d;
-    }
-    // Firestore Timestamp (web): {seconds, nanoseconds}
-    if (typeof val === 'object' && ('seconds' in val) ){
-      return new Date((val.seconds*1000) + Math.floor((val.nanoseconds||0)/1e6));
-    }
-    // Firestore REST: {_seconds, _nanoseconds}
-    if (typeof val === 'object' && ('_seconds' in val)){
-      return new Date((val._seconds*1000) + Math.floor((val._nanoseconds||0)/1e6));
-    }
-    // Fallback: try Date constructor
-    const d = new Date(val);
-    return isNaN(d.getTime()) ? null : d;
-  }catch(e){ return null; }
-}
 </script>
 
 
@@ -2366,41 +2215,20 @@ function __toDate__(val){
     }
   
   try {
-    if (AppState && AppState.downtimeStarted && AppState.downtimeStartTime){
+    if (AppState.downtimeStarted && AppState.downtimeStartTime) {
       const now = new Date();
-      const paused = (AppState.pausedDuration || 0);
-      const elapsedMs = now - AppState.downtimeStartTime - paused;
-      const hours = elapsedMs / 3600000;
-      const pph = 60; // pixels per hour
-      const maxPx = (AppState.downtimeDuration || 0) * pph;
-      const linePosition = Math.max(0, Math.min(hours * pph, maxPx));
+      const elapsedMs = now - AppState.downtimeStartTime - (AppState.pausedDuration || 0);
+      const elapsed = elapsedMs / 3600000;
+      const pixelsPerHour = 60;
+      const linePosition = Math.min(elapsed * pixelsPerHour, AppState.downtimeDuration * pixelsPerHour);
       const currentLine = document.getElementById('currentTimeLine');
-      if (currentLine){
+      if (currentLine) {
         currentLine.style.left = `${linePosition}px`;
         currentLine.style.display = 'block';
       }
     }
-  } catch(e) {}
-
-  try {
-    const start = __toDate__(AppState.downtimeStartTime);
-    if (AppState && AppState.downtimeStarted && start){
-      const now = new Date();
-      const paused = (AppState.pausedDuration || 0);
-      const elapsedMs = now - start - paused;
-      const hours = Math.max(0, elapsedMs / 3600000);
-      const pph = 60; // pixels per hour
-      const maxPx = (AppState.downtimeDuration || 0) * pph;
-      const linePosition = Math.max(0, Math.min(hours * pph, maxPx));
-      const currentLine = document.getElementById('currentTimeLine');
-      if (currentLine){
-        currentLine.style.left = `${linePosition}px`;
-        currentLine.style.display = 'block';
-      }
-    }
-  } catch(e) {}
+  } catch {}
 }
-
 
   function applyRemoteState(st){
     const s = S();
@@ -2419,7 +2247,8 @@ function __toDate__(val){
     if (tp && typeof st.transformCycle === "string" && tp.value !== st.transformCycle) tp.value = st.transformCycle;
 
     lockFieldsForStarted(!!st.downtimeStarted);
-    s.downtimeStartTime = __toDate__(s.downtimeStartTime);
+    try { if (typeof window.updateTimeline === "function") window.updateTimeline(); } catch {}
+
 
     try {
       if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
@@ -2429,10 +2258,7 @@ function __toDate__(val){
     updateViewerStatusBanner();
     updateViewerProgress();
     updateViewerTimelineVisual();
-  
-  try{ enforceViewerReadOnly(); }catch(e){}
-}
-
+  }
 
   // ===== Mode — NO TAKEOVER =====
   let initialApplied=false, lastSent=null, writing=false, remoteController=null, controllerAttempted=false;
