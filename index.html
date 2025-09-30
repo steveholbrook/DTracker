@@ -884,7 +884,40 @@
   background:red;
   z-index:9999;
   pointer-events:none;
-}</style>
+}
+/* === Viewer Read-Only Mode === */
+.viewer-readonly input,
+.viewer-readonly select,
+.viewer-readonly textarea,
+.viewer-readonly button {
+  pointer-events: none;
+}
+.viewer-readonly input[disabled],
+.viewer-readonly select[disabled],
+.viewer-readonly textarea[disabled],
+.viewer-readonly button[disabled] {
+  opacity: 0.85; /* keep readable */
+}
+.viewer-readonly .timeline-track,
+.viewer-readonly .timeline-control-row,
+.viewer-readonly .timeline-control-cell {
+  pointer-events: none;
+}
+
+
+/* === Live tracker visibility & anchoring === */
+#timelineBody{ position: relative; }
+.current-time-line{
+  position:absolute;
+  top:0;
+  bottom:0;
+  width:2px;
+  background:red;
+  z-index:9999;
+  pointer-events:none;
+}
+
+</style>
 
   <!--
     Microsoft Teams JavaScript SDK v2: Include this script to enable
@@ -1391,7 +1424,10 @@ function updateTimeline() {
   }
 
   try{ ensureRowAlignment(); }catch(e){}
+
+  try{ enforceViewerReadOnly(); }catch(e){}
 }
+
 
 
 function generateTimeScale(hours) {
@@ -2064,6 +2100,60 @@ function ensureRowAlignment(){
     }
   } catch(e){}
 })();
+
+// Apply viewer read-only on load
+try{ enforceViewerReadOnly(); }catch(e){}
+
+// Force all fields to display-only in Viewer mode
+function enforceViewerReadOnly(){
+  try{
+    var isViewer = (typeof canWrite === 'function') ? !canWrite() : false;
+    document.body.classList.toggle('viewer-readonly', !!isViewer);
+    var ctrls = document.querySelectorAll('input, select, textarea, button');
+    for (var i=0; i<ctrls.length; i++){
+      var el = ctrls[i];
+      if (isViewer){
+        el.setAttribute('disabled','disabled');
+        el.setAttribute('aria-disabled','true');
+        if (el.tagName==='INPUT' && (el.type==='text' || el.type==='number')) el.readOnly = true;
+      } else {
+        // Only re-enable controls that we explicitly disabled (avoid overriding app's own locks)
+        if (el.getAttribute('aria-disabled') === 'true'){
+          el.removeAttribute('disabled');
+          el.removeAttribute('aria-disabled');
+          if (el.tagName==='INPUT') el.readOnly = false;
+        }
+      }
+    }
+  }catch(e){}
+}
+
+// Normalize downtimeStartTime to a Date
+function __toDate__(val){
+  try{
+    if (!val) return null;
+    if (val instanceof Date) return val;
+    if (typeof val === 'number') {
+      // assume ms since epoch
+      return new Date(val);
+    }
+    if (typeof val === 'string'){
+      const d = new Date(val);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    // Firestore Timestamp (web): {seconds, nanoseconds}
+    if (typeof val === 'object' && ('seconds' in val) ){
+      return new Date((val.seconds*1000) + Math.floor((val.nanoseconds||0)/1e6));
+    }
+    // Firestore REST: {_seconds, _nanoseconds}
+    if (typeof val === 'object' && ('_seconds' in val)){
+      return new Date((val._seconds*1000) + Math.floor((val._nanoseconds||0)/1e6));
+    }
+    // Fallback: try Date constructor
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+  }catch(e){ return null; }
+}
 </script>
 
 
@@ -2291,7 +2381,26 @@ function ensureRowAlignment(){
       }
     }
   } catch(e) {}
+
+  try {
+    const start = __toDate__(AppState.downtimeStartTime);
+    if (AppState && AppState.downtimeStarted && start){
+      const now = new Date();
+      const paused = (AppState.pausedDuration || 0);
+      const elapsedMs = now - start - paused;
+      const hours = Math.max(0, elapsedMs / 3600000);
+      const pph = 60; // pixels per hour
+      const maxPx = (AppState.downtimeDuration || 0) * pph;
+      const linePosition = Math.max(0, Math.min(hours * pph, maxPx));
+      const currentLine = document.getElementById('currentTimeLine');
+      if (currentLine){
+        currentLine.style.left = `${linePosition}px`;
+        currentLine.style.display = 'block';
+      }
+    }
+  } catch(e) {}
 }
+
 
   function applyRemoteState(st){
     const s = S();
@@ -2310,6 +2419,7 @@ function ensureRowAlignment(){
     if (tp && typeof st.transformCycle === "string" && tp.value !== st.transformCycle) tp.value = st.transformCycle;
 
     lockFieldsForStarted(!!st.downtimeStarted);
+    s.downtimeStartTime = __toDate__(s.downtimeStartTime);
 
     try {
       if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
@@ -2319,7 +2429,10 @@ function ensureRowAlignment(){
     updateViewerStatusBanner();
     updateViewerProgress();
     updateViewerTimelineVisual();
-  }
+  
+  try{ enforceViewerReadOnly(); }catch(e){}
+}
+
 
   // ===== Mode — NO TAKEOVER =====
   let initialApplied=false, lastSent=null, writing=false, remoteController=null, controllerAttempted=false;
