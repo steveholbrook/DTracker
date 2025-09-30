@@ -569,14 +569,15 @@
   }
   
   .current-time-line{
-  position:absolute;
-  top:0;
-  bottom:0;
-  width:2px;
-  background:red;
-  z-index:9999;
-  pointer-events:none;
-}
+    position:absolute;
+    /* Position the current-time indicator immediately below the 20px scale */
+    top:20px;
+    bottom:0;
+    width:2px;
+    background:var(--sap-error);
+    z-index:15;
+    pointer-events:none;
+  }
   
   .current-time-label{
     position:absolute;
@@ -863,7 +864,20 @@
 }
 .timeline-control-row{ height: 24px !important; }
 .timeline-control-cell{ display:flex; align-items:center; height:24px; }
-</style>
+
+.current-time-line{
+  position:absolute;
+  top:0;
+  bottom:0;
+  width:2px;
+  background:red;
+  z-index:9999;
+  pointer-events:none;
+}
+html, body, .timeline, .timeline-row, .timeline-control-row{
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}</style>
 
   <!--
     Microsoft Teams JavaScript SDK v2: Include this script to enable
@@ -1393,18 +1407,18 @@ function generateTimelineRows() {
   // Containers for track rows and control rows
   const trackContainer = document.getElementById('timelineRows');
   const controlsContainer = document.getElementById('timelineControlsRows');
+  // Ensure both containers exist (timelineControlsRows may not exist on initial load)
   if (trackContainer) trackContainer.innerHTML = '';
   if (controlsContainer) controlsContainer.innerHTML = '';
   
-  // Sort and FILTER: only include rows with a non-empty runblock
-  const sortedRunbooks = [...AppState.runbooks]
-    .sort((a, b) => a.sequence - b.sequence)
-    .filter(rb => (rb && (rb.runblock || '').trim().length > 0));
-
-  // Render only visible runbooks
+  // Sort runbooks by sequence
+  const sortedRunbooks = [...AppState.runbooks].sort((a, b) => a.sequence - b.sequence);
+  
   sortedRunbooks.forEach((runbook, index) => {
+    // Create track row for the left scrollable area
     const trackRow = createTimelineRow(runbook, index);
     if (trackContainer) trackContainer.appendChild(trackRow);
+    // Create control row for the right fixed area
     const controlRow = createTimelineControlRow(runbook);
     if (controlsContainer) controlsContainer.appendChild(controlRow);
   });
@@ -1712,8 +1726,6 @@ function toggleCompleted(id, checked) {
 }
 
 function startDowntime() {
-  { const l=document.getElementById('currentTimeLine'); if(l) l.style.display='block'; }
-
   AppState.downtimeStarted = true;
   AppState.downtimeStartTime = new Date();
   AppState.pausedDuration = 0;
@@ -1777,8 +1789,6 @@ function pauseDowntime() {
 }
 
 function resumeDowntime() {
-  { const l=document.getElementById('currentTimeLine'); if(l) l.style.display='block'; }
-
   if (AppState.downtimePaused) {
     const pauseDuration = new Date() - AppState.pauseStartTime;
     AppState.pausedDuration += pauseDuration;
@@ -1842,7 +1852,6 @@ function updateProgressIndicators() {
   const linePosition = Math.min(elapsed * pixelsPerHour, AppState.downtimeDuration * pixelsPerHour);
   const currentLine = document.getElementById('currentTimeLine');
   currentLine.style.left = `${linePosition}px`;
-  currentLine.style.display = 'block';
   
   // Calculate elapsed time in HH:MM:SS format
   const totalSeconds = Math.floor(elapsedMs / 1000);
@@ -2213,22 +2222,7 @@ function generateReport(){
     if (fill) {
       fill.style.width = pct + "%";
     }
-  
-  try {
-    if (AppState.downtimeStarted && AppState.downtimeStartTime) {
-      const now = new Date();
-      const elapsedMs = now - AppState.downtimeStartTime - (AppState.pausedDuration || 0);
-      const elapsed = elapsedMs / 3600000;
-      const pixelsPerHour = 60;
-      const linePosition = Math.min(elapsed * pixelsPerHour, AppState.downtimeDuration * pixelsPerHour);
-      const currentLine = document.getElementById('currentTimeLine');
-      if (currentLine) {
-        currentLine.style.left = `${linePosition}px`;
-        currentLine.style.display = 'block';
-      }
-    }
-  } catch {}
-}
+  }
 
   function applyRemoteState(st){
     const s = S();
@@ -2247,8 +2241,6 @@ function generateReport(){
     if (tp && typeof st.transformCycle === "string" && tp.value !== st.transformCycle) tp.value = st.transformCycle;
 
     lockFieldsForStarted(!!st.downtimeStarted);
-    try { if (typeof window.updateTimeline === "function") window.updateTimeline(); } catch {}
-
 
     try {
       if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
@@ -2402,94 +2394,44 @@ function generateReport(){
 </script>
 
 <script>
-// === PATCH: Strategy/Phase options, footer layout, and alignment sync ===
+// === PATCH (safe): footer placement & alignment (syntactically corrected) ===
 (function(){
-  if (window.__tlPatchApplied) return; window.__tlPatchApplied = true;
-
-  function ensureArrayItem(arrName, item){
-    try{
-      if (!window[arrName]) return;
-      var a = window[arrName];
-      if (Array.isArray(a) && a.indexOf(item) === -1) a.push(item);
-    }catch(e){}
-  }
-  function ensureSelectOption(selector, value, text){
-    try{
-      document.querySelectorAll(selector).forEach(function(sel){
-        if (!(sel && sel.tagName === 'SELECT')) return;
-        var exists = Array.prototype.some.call(sel.options || [], function(o){ return (o.value||o.textContent).trim().toLowerCase() === String(value).toLowerCase(); });
-        if (!exists){
-          var opt = document.createElement('option');
-          opt.value = value; opt.textContent = text || value;
-          sel.appendChild(opt);
-        }
-      });
-    }catch(e){}
-  }
-  function findTimelineContainer(){
-    var scrollEl = document.querySelector('.timeline-scroll');
-    if (!scrollEl) return null;
-    var el = scrollEl;
-    while (el && el.parentElement){
-      if (el.classList.contains('timeline-container') ||
-          el.classList.contains('timeline') ||
-          el.classList.contains('timeline-wrapper') ||
-          el.id === 'timeline' || el.id === 'timelineMain') return el;
-      el = el.parentElement;
+  if (window.__tlPatchAppliedSafe) return; window.__tlPatchAppliedSafe = true;
+  try{
+    function findTimelineContainer(){
+      var scrollEl = document.querySelector('.timeline-scroll') || document.getElementById('timelineBody');
+      if (!scrollEl) return null;
+      var el = scrollEl;
+      while (el && !el.classList.contains('timeline-container')){
+        el = el.parentElement;
+      }
+      return el || scrollEl.parentElement || document.body;
     }
-    return scrollEl.parentElement;
-  }
-  function placeFooter(){
-    try{
+    function placeFooter(){
       var legend = document.querySelector('.legend');
       var report = document.getElementById('reportBtn');
-      if (!legend || !report) return;
       var container = findTimelineContainer();
-      if (!container || !container.parentElement) return;
+      if (!legend || !report || !container || !container.parentElement) return;
       var next = container.nextElementSibling;
       var footer = (next && next.classList && next.classList.contains('timeline-footer')) ? next : (function(){
         var f = document.createElement('div'); f.className = 'timeline-footer';
-        container.parentElement.insertBefore(f, container.nextElementSibling);
+        container.parentElement.insertBefore(f, container.nextSibling);
         return f;
       })();
-      if (legend.parentElement !== footer) footer.appendChild(legend);
-      if (report.parentElement !== footer) footer.appendChild(report);
-    }catch(e){ console.warn('Footer placement skipped:', e); }
-  }
-  function syncRightToLeftScroll(){
-    var left = document.querySelector('.timeline-scroll');
-    var rightRows = document.getElementById('timelineControlsRows');
-    if (!left || !rightRows) return;
-    rightRows.style.transform = 'translateY(' + (-left.scrollTop) + 'px)';
-  }
-  function init(){
-    // 1) Ensure arrays/selects include new entries
-    ensureArrayItem('STRATEGIES', 'Preparation');
-    ensureArrayItem('PHASES', 'Collector');
-    ensureArrayItem('PHASES', 'NZD');
-    ensureSelectOption('select[name="strategy"], select[data-field="strategy"], select.strategy', 'Preparation', 'Preparation');
-    ensureSelectOption('select[name="phase"], select[data-field="phase"], select.phase', 'Collector', 'Collector');
-    ensureSelectOption('select[name="phase"], select[data-field="phase"], select.phase', 'NZD', 'NZD');
-
-    // 2) Place legend left & report right below timeline
+      if (!footer) return;
+      // Copy legend + a usable report button
+      footer.innerHTML = '';
+      var frag = document.createDocumentFragment();
+      frag.appendChild(legend.cloneNode(true));
+      var rpt = report.cloneNode(true);
+      rpt.id = 'reportBtnClone';
+      rpt.removeAttribute('disabled');
+      rpt.onclick = report.onclick ? report.onclick.bind(report) : null;
+      frag.appendChild(rpt);
+      footer.appendChild(frag);
+    }
     placeFooter();
-
-    // 3) Keep right control rows aligned with left scroll
-    var left = document.querySelector('.timeline-scroll');
-    if (left) left.addEventListener('scroll', syncRightToLeftScroll, { passive:true });
-    syncRightToLeftScroll();
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
-
-  // Re-apply after timeline regenerates (if app exposes the hook)
-  if (typeof window.generateTimelineRows === 'function'){
-    var _orig = window.generateTimelineRows;
-    window.generateTimelineRows = function(){
-      var r = _orig.apply(this, arguments);
-      try{ init(); }catch(e){}
-      return r;
-    };
-  }
+  }catch(e){ /* no-op */ }
 })();
 </script>
 </body>
