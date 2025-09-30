@@ -822,116 +822,18 @@
   }
 
 
-/* Footer/legend layout: place Report at far right */
+/* === Force legend below timeline and align left; keep Report on the right === */
 .legend{
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:10px;
-}
-#reportBtn{
-  margin-left:auto !important;
-  align-self:flex-end;
-}
-
-
-/* Enforce consistent header/row heights for perfect alignment */
-.timeline-right-header{
-  height:20px !important;
-  display:grid;
-  grid-template-columns:70px 70px 60px;
-  align-items:center;
-  white-space:nowrap;
-}
-.timeline-right-header .header-cell{
-  line-height:20px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-.timeline-control-row{
-  height:20px !important;
-}
-.timeline-control-cell{
-  display:flex;
-  align-items:center;
-  height:20px;
-}
-.timeline-scale{
-  height:20px !important;
-}
-
-
-  .block-preparation{background:#009688;}
-
-/* Footer/legend row: key on the left, Report on the far right */
-.legend-row, .legend-container, .timeline-footer {
-  display: flex;
+  clear: both !important;   /* ensure we drop below any floated columns */
+  width: 100% !important;   /* span full row */
+  display: flex !important; /* layout row */
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-start !important;
+  gap: 16px;
 }
-/* Push the report button to the far right if it shares a row */
-#reportBtn {
-  margin-left: auto !important;
-  align-self: center;
-  background: #1976D2 !important;
-  border-color: #115293 !important;
-  color: #fff !important;
-}
-#reportBtn:hover {
-  background: #1565C0 !important;
-  border-color: #0D47A1 !important;
-}
-
-
-/* Fallback: if legend and report button share a common parent, make it flex */
-.legend + #reportBtn,
-.legend ~ #reportBtn {
-  margin-left: auto !important;
-}
-
-
-/* Timeline footer below the timeline: key left, Report far right */
-.timeline-footer{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  margin-top:12px;
-  padding-top:6px;
-  border-top: 1px dashed var(--sap-border, #ccc);
-}
-.timeline-footer .legend{ margin:0; }
-.timeline-footer #reportBtn{
-  margin-left:auto !important;
-  align-self:center;
-}
-
-
-/* === Heading sizing alignment (Start/Duration/Complete) === */
-:root{
-  --timeline-heading-size: 14px;
-  --timeline-heading-weight: 600;
-  --timeline-header-height: 24px;
-}
-/* Right header (Start / Duration / Complete) */
-.timeline-right-header{
-  height: var(--timeline-header-height) !important;
-  font-size: var(--timeline-heading-size) !important;
-  font-weight: var(--timeline-heading-weight) !important;
-}
-.timeline-right-header .header-cell{
-  line-height: var(--timeline-header-height) !important;
-  font-size: var(--timeline-heading-size) !important;
-  font-weight: var(--timeline-heading-weight) !important;
-  white-space: nowrap;
-}
-/* Left header row above timeline (keep heights identical so first row alignment is preserved) */
-.timeline-scale{
-  height: var(--timeline-header-height) !important;
-  line-height: var(--timeline-header-height) !important;
-  font-size: var(--timeline-heading-size) !important;
-  font-weight: var(--timeline-heading-weight) !important;
-  white-space: nowrap;
+.legend #reportBtn{
+  margin-left: auto !important; /* push report to the far right */
 }
 
 </style>
@@ -1057,14 +959,9 @@
         </div>
       </div>
       
-      <div class="legend legend-container">
+      <div class="legend">
         <div class="legend-item">
-          <div class="legend-color block-export">
-        <div class="legend-item">
-          <div class="legend-color block-preparation"></div>
-          <span>Preparation</span>
-        </div>
-</div>
+          <div class="legend-color block-export"></div>
           <span>Export</span>
         </div>
         <div class="legend-item">
@@ -1159,8 +1056,8 @@ const AppState = {
 };
 
 // Strategy and Phase options
-const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation', 'Preparation'];
-const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support', 'Collector', 'NZD'];
+const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation'];
+const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support'];
 
 // Reset everything to default state
 function resetApplication() {
@@ -1623,7 +1520,7 @@ function createTimelineControlRow(runbook) {
 function createTimelineBlock(runbook) {
   const block = document.createElement('div');
   const strategyClass = runbook.strategy.toLowerCase().replace(/\s+/g, '');
-  block.className = `timeline-block block-${strategyToClass(runbook.strategy)}`;
+  block.className = `timeline-block block-${strategyClass}`;
   block.dataset.runbookId = runbook.id;
   // Prevent dragging if the runbook is completed
   if (runbook.completed) {
@@ -2455,139 +2352,5 @@ function generateReport(){
   try { if (typeof AppState !== "undefined") window._AppStateRef = AppState; } catch (e) {}
 </script>
 
-
-<script>
-// Keep control rows aligned with runblock rows while scrolling
-(function(){
-  function syncRightToLeftScroll(){
-    var left = document.querySelector('.timeline-scroll');
-    var rightRows = document.getElementById('timelineControlsRows');
-    if (!left || !rightRows) return;
-    rightRows.style.transform = 'translateY(' + (-left.scrollTop) + 'px)';
-  }
-  function initScrollSync(){
-    var left = document.querySelector('.timeline-scroll');
-    if (!left) return;
-    left.addEventListener('scroll', syncRightToLeftScroll, { passive:true });
-    syncRightToLeftScroll();
-  }
-  if (typeof window.generateTimelineRows === 'function'){
-    var _orig = window.generateTimelineRows;
-    window.generateTimelineRows = function(){
-      var r = _orig.apply(this, arguments);
-      requestAnimationFrame(initScrollSync);
-      return r;
-    };
-  }
-  document.addEventListener('DOMContentLoaded', initScrollSync);
-  window.addEventListener('resize', function(){ requestAnimationFrame(initScrollSync); });
-})();
-</script>
-
-
-<script>
-function strategyToClass(name){
-  if (!name) return 'export';
-  const map = {
-    'export':'export',
-    'import':'import',
-    'quality gate':'quality',
-    'conversion':'conversion',
-    'validation':'validation',
-    'preparation':'preparation'
-  };
-  const key = String(name).toLowerCase();
-  return map[key] || key.replace(/[^a-z0-9]+/g,'-');
-}
-</script>
-
-
-<script>
-// Ensure legend (key) order follows STRATEGIES; keeps "Preparation" after "Validation"
-(function(){
-  function reorderLegend(){
-    try{
-      var desired = (window.STRATEGIES && Array.isArray(window.STRATEGIES) ? window.STRATEGIES.slice(0) 
-                    : ['Export','Import','Quality Gate','Conversion','Validation','Preparation'])
-                    .map(function(s){ return String(s).trim(); });
-      // Ensure Preparation appears after Validation even if STRATEGIES changes order later
-      var v = desired.indexOf('Validation');
-      var p = desired.indexOf('Preparation');
-      if (v !== -1 && p !== -1 && p < v) {
-        desired.splice(p, 1);
-        desired.splice(v+1, 0, 'Preparation');
-      }
-      var legend = document.querySelector('.legend');
-      if (!legend) return;
-      var items = Array.prototype.slice.call(legend.querySelectorAll('.legend-item'));
-      items.sort(function(a,b){
-        function name(el){
-          var t = el && el.querySelector('span') ? el.querySelector('span').textContent.trim() : '';
-        	  return t;
-        }
-        return desired.indexOf(name(a)) - desired.indexOf(name(b));
-      });
-      items.forEach(function(el){ legend.appendChild(el); });
-    }catch(e){ console.warn('Legend reorder skipped:', e); }
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', reorderLegend);
-  } else {
-    reorderLegend();
-  }
-  if (typeof window.generateTimelineRows === 'function'){
-    var _orig = window.generateTimelineRows;
-    window.generateTimelineRows = function(){
-      var r = _orig.apply(this, arguments);
-      try { reorderLegend(); } catch(e){}
-      return r;
-    };
-  }
-})();
-</script>
-
-
-<script>
-// Place legend below the timeline (left) and Report button at far right
-(function(){
-  function placeFooter(){
-    try{
-      var legend = document.querySelector('.legend');
-      var report = document.getElementById('reportBtn');
-      if (!legend || !report) return;
-      // Find the main timeline container (prefer the element wrapping .timeline-scroll)
-      var scrollEl = document.querySelector('.timeline-scroll');
-      var container = scrollEl ? scrollEl.closest('.timeline, .timeline-wrapper, .timeline-area, .timeline-container, .content-section, .panel, .card, div') : null;
-      if (!container || !container.parentElement) return;
-      // Create (or reuse) a footer row placed right after the timeline container
-      var footer = container.nextElementSibling && container.nextElementSibling.classList && container.nextElementSibling.classList.contains('timeline-footer')
-                   ? container.nextElementSibling
-                   : (function(){
-                        var f = document.createElement('div');
-                        f.className = 'timeline-footer';
-                        container.parentElement.insertBefore(f, container.nextElementSibling);
-                        return f;
-                      })();
-      // Move legend and report into the footer, in order
-      if (legend.parentElement !== footer) footer.appendChild(legend);
-      if (report.parentElement !== footer) footer.appendChild(report);
-    }catch(e){ console.warn('Footer placement skipped:', e); }
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', placeFooter);
-  } else {
-    placeFooter();
-  }
-  // Re-run after timeline regenerations if the app exposes the hook
-  if (typeof window.generateTimelineRows === 'function'){
-    var _orig = window.generateTimelineRows;
-    window.generateTimelineRows = function(){
-      var r = _orig.apply(this, arguments);
-      try{ placeFooter(); }catch(e){}
-      return r;
-    };
-  }
-})();
-</script>
-
-</body></html>
+</body>
+</html>
