@@ -607,6 +607,10 @@
   .block-conversion{background:#9C27B0;}
   .block-validation{background:#00BCD4;}
 
+  /* Preparation strategy color */
+  .block-preparation{background:#607D8B;}
+
+
   /*
     Style the runblock name label that is associated with each timeline block.
     The label appears to the left of the block (outside of it) so users can
@@ -1008,6 +1012,10 @@
           <div class="legend-color block-validation"></div>
           <span>Validation</span>
         </div>
+        <div class="legend-item">
+          <div class="legend-color block-preparation"></div>
+          <span>Preparation</span>
+        </div>
       
         <button class="btn success" id="reportBtn" onclick="generateReport()" style="margin-left:auto">Report</button>
       </div>
@@ -1084,8 +1092,8 @@ const AppState = {
 };
 
 // Strategy and Phase options
-const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation'];
-const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support'];
+const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation', 'Preparation'];
+const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support', 'Collector', 'NZD'];
 
 // Reset everything to default state
 function resetApplication() {
