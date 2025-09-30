@@ -607,10 +607,6 @@
   .block-conversion{background:#9C27B0;}
   .block-validation{background:#00BCD4;}
 
-  /* Preparation strategy color */
-  .block-preparation{background:#607D8B;}
-
-
   /*
     Style the runblock name label that is associated with each timeline block.
     The label appears to the left of the block (outside of it) so users can
@@ -866,8 +862,8 @@
   font-size: var(--tl-header-size) !important;
   font-weight: var(--tl-header-weight) !important;
 }
-.timeline-control-row{ height: 20px !important; }
-.timeline-control-cell{ display:flex; align-items:center; height:20px; }
+.timeline-control-row{ height: 24px !important; }
+.timeline-control-cell{ display:flex; align-items:center; height:24px; }
 </style>
 
   <!--
@@ -1012,10 +1008,6 @@
           <div class="legend-color block-validation"></div>
           <span>Validation</span>
         </div>
-        <div class="legend-item">
-          <div class="legend-color block-preparation"></div>
-          <span>Preparation</span>
-        </div>
       
         <button class="btn success" id="reportBtn" onclick="generateReport()" style="margin-left:auto">Report</button>
       </div>
@@ -1092,8 +1084,8 @@ const AppState = {
 };
 
 // Strategy and Phase options
-const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation', 'Preparation'];
-const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support', 'Collector', 'NZD'];
+const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation'];
+const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support'];
 
 // Reset everything to default state
 function resetApplication() {
@@ -1847,6 +1839,7 @@ function updateProgressIndicators() {
   const linePosition = Math.min(elapsed * pixelsPerHour, AppState.downtimeDuration * pixelsPerHour);
   const currentLine = document.getElementById('currentTimeLine');
   currentLine.style.left = `${linePosition}px`;
+  currentLine.style.display = 'block';
   
   // Calculate elapsed time in HH:MM:SS format
   const totalSeconds = Math.floor(elapsedMs / 1000);
@@ -2477,6 +2470,22 @@ function generateReport(){
       return r;
     };
   }
+  // Show and move the current time line for viewers as well
+  try {
+    if (AppState.downtimeStarted && AppState.downtimeStartTime) {
+      const now = new Date();
+      const elapsedMs = now - AppState.downtimeStartTime - (AppState.pausedDuration || 0);
+      const elapsed = elapsedMs / 3600000;
+      const pixelsPerHour = 60;
+      const linePosition = Math.min(elapsed * pixelsPerHour, AppState.downtimeDuration * pixelsPerHour);
+      const currentLine = document.getElementById('currentTimeLine');
+      if (currentLine) {
+        currentLine.style.left = `${linePosition}px`;
+        currentLine.style.display = 'block';
+      }
+    }
+  } catch {}
+
 })();
 </script>
 </body>
