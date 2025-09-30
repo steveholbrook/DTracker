@@ -875,7 +875,16 @@
   margin: 0;
 }
 
-</style>
+
+.current-time-line{
+  position:absolute;
+  top:0;
+  bottom:0;
+  width:2px;
+  background:red;
+  z-index:9999;
+  pointer-events:none;
+}</style>
 
   <!--
     Microsoft Teams JavaScript SDK v2: Include this script to enable
@@ -2042,6 +2051,19 @@ function ensureRowAlignment(){
     }
   }catch(e){}
 }
+
+// Keep viewer progress line moving even without host interaction
+(function ensureViewerTicker(){
+  try {
+    if (!window.__viewerTicker){
+      window.__viewerTicker = setInterval(function(){
+        if (typeof updateViewerTimelineVisual === 'function' && !canWrite()){
+          updateViewerTimelineVisual();
+        }
+      }, 1000);
+    }
+  } catch(e){}
+})();
 </script>
 
 
@@ -2252,7 +2274,24 @@ function ensureRowAlignment(){
     if (fill) {
       fill.style.width = pct + "%";
     }
-  }
+  
+  try {
+    if (AppState && AppState.downtimeStarted && AppState.downtimeStartTime){
+      const now = new Date();
+      const paused = (AppState.pausedDuration || 0);
+      const elapsedMs = now - AppState.downtimeStartTime - paused;
+      const hours = elapsedMs / 3600000;
+      const pph = 60; // pixels per hour
+      const maxPx = (AppState.downtimeDuration || 0) * pph;
+      const linePosition = Math.max(0, Math.min(hours * pph, maxPx));
+      const currentLine = document.getElementById('currentTimeLine');
+      if (currentLine){
+        currentLine.style.left = `${linePosition}px`;
+        currentLine.style.display = 'block';
+      }
+    }
+  } catch(e) {}
+}
 
   function applyRemoteState(st){
     const s = S();
