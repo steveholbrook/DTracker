@@ -822,18 +822,43 @@
   }
 
 
-/* === Force legend below timeline and align left; keep Report on the right === */
+/* Footer/legend layout: place Report at far right */
 .legend{
-  clear: both !important;   /* ensure we drop below any floated columns */
-  width: 100% !important;   /* span full row */
-  display: flex !important; /* layout row */
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-start !important;
-  gap: 16px;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:10px;
 }
-.legend #reportBtn{
-  margin-left: auto !important; /* push report to the far right */
+#reportBtn{
+  margin-left:auto !important;
+  align-self:flex-end;
+}
+
+
+/* Enforce consistent header/row heights for perfect alignment */
+.timeline-right-header{
+  height:20px !important;
+  display:grid;
+  grid-template-columns:70px 70px 60px;
+  align-items:center;
+  white-space:nowrap;
+}
+.timeline-right-header .header-cell{
+  line-height:20px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.timeline-control-row{
+  height:20px !important;
+}
+.timeline-control-cell{
+  display:flex;
+  align-items:center;
+  height:20px;
+}
+.timeline-scale{
+  height:20px !important;
 }
 
 </style>
@@ -1056,8 +1081,8 @@ const AppState = {
 };
 
 // Strategy and Phase options
-const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation'];
-const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support'];
+const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation', 'Preparation'];
+const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support', 'Collector', 'NZD'];
 
 // Reset everything to default state
 function resetApplication() {
@@ -2352,5 +2377,33 @@ function generateReport(){
   try { if (typeof AppState !== "undefined") window._AppStateRef = AppState; } catch (e) {}
 </script>
 
-</body>
-</html>
+
+<script>
+// Keep control rows aligned with runblock rows while scrolling
+(function(){
+  function syncRightToLeftScroll(){
+    var left = document.querySelector('.timeline-scroll');
+    var rightRows = document.getElementById('timelineControlsRows');
+    if (!left || !rightRows) return;
+    rightRows.style.transform = 'translateY(' + (-left.scrollTop) + 'px)';
+  }
+  function initScrollSync(){
+    var left = document.querySelector('.timeline-scroll');
+    if (!left) return;
+    left.addEventListener('scroll', syncRightToLeftScroll, { passive:true });
+    syncRightToLeftScroll();
+  }
+  if (typeof window.generateTimelineRows === 'function'){
+    var _orig = window.generateTimelineRows;
+    window.generateTimelineRows = function(){
+      var r = _orig.apply(this, arguments);
+      requestAnimationFrame(initScrollSync);
+      return r;
+    };
+  }
+  document.addEventListener('DOMContentLoaded', initScrollSync);
+  window.addEventListener('resize', function(){ requestAnimationFrame(initScrollSync); });
+})();
+</script>
+
+</body></html>
