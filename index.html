@@ -569,14 +569,15 @@
   }
   
   .current-time-line{
-  position:absolute;
-  top:0;
-  bottom:0;
-  width:2px;
-  background:red;
-  z-index:9999;
-  pointer-events:none;
-}
+    position:absolute;
+    /* Position the current-time indicator immediately below the 20px scale */
+    top:20px;
+    bottom:0;
+    width:2px;
+    background:var(--sap-error);
+    z-index:15;
+    pointer-events:none;
+  }
   
   .current-time-label{
     position:absolute;
@@ -605,6 +606,10 @@
   .block-qualitygate{background:#FF9800;}
   .block-conversion{background:#9C27B0;}
   .block-validation{background:#00BCD4;}
+
+  /* Preparation strategy color */
+  .block-preparation{background:#607D8B;}
+
 
   /*
     Style the runblock name label that is associated with each timeline block.
@@ -861,8 +866,8 @@
   font-size: var(--tl-header-size) !important;
   font-weight: var(--tl-header-weight) !important;
 }
-.timeline-control-row{ height: 24px !important; }
-.timeline-control-cell{ display:flex; align-items:center; height:24px; }
+.timeline-control-row{ height: 20px !important; }
+.timeline-control-cell{ display:flex; align-items:center; height:20px; }
 </style>
 
   <!--
@@ -1007,6 +1012,10 @@
           <div class="legend-color block-validation"></div>
           <span>Validation</span>
         </div>
+        <div class="legend-item">
+          <div class="legend-color block-preparation"></div>
+          <span>Preparation</span>
+        </div>
       
         <button class="btn success" id="reportBtn" onclick="generateReport()" style="margin-left:auto">Report</button>
       </div>
@@ -1083,8 +1092,8 @@ const AppState = {
 };
 
 // Strategy and Phase options
-const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation'];
-const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support'];
+const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation', 'Preparation'];
+const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support', 'Collector', 'NZD'];
 
 // Reset everything to default state
 function resetApplication() {
@@ -1393,18 +1402,18 @@ function generateTimelineRows() {
   // Containers for track rows and control rows
   const trackContainer = document.getElementById('timelineRows');
   const controlsContainer = document.getElementById('timelineControlsRows');
+  // Ensure both containers exist (timelineControlsRows may not exist on initial load)
   if (trackContainer) trackContainer.innerHTML = '';
   if (controlsContainer) controlsContainer.innerHTML = '';
   
-  // Sort and FILTER: only include rows with a non-empty runblock
-  const sortedRunbooks = [...AppState.runbooks]
-    .sort((a, b) => a.sequence - b.sequence)
-    .filter(rb => (rb && (rb.runblock || '').trim().length > 0));
-
-  // Render only visible runbooks
+  // Sort runbooks by sequence
+  const sortedRunbooks = [...AppState.runbooks].sort((a, b) => a.sequence - b.sequence);
+  
   sortedRunbooks.forEach((runbook, index) => {
+    // Create track row for the left scrollable area
     const trackRow = createTimelineRow(runbook, index);
     if (trackContainer) trackContainer.appendChild(trackRow);
+    // Create control row for the right fixed area
     const controlRow = createTimelineControlRow(runbook);
     if (controlsContainer) controlsContainer.appendChild(controlRow);
   });
@@ -1712,8 +1721,6 @@ function toggleCompleted(id, checked) {
 }
 
 function startDowntime() {
-  { const l=document.getElementById('currentTimeLine'); if(l) l.style.display='block'; }
-
   AppState.downtimeStarted = true;
   AppState.downtimeStartTime = new Date();
   AppState.pausedDuration = 0;
@@ -1777,8 +1784,6 @@ function pauseDowntime() {
 }
 
 function resumeDowntime() {
-  { const l=document.getElementById('currentTimeLine'); if(l) l.style.display='block'; }
-
   if (AppState.downtimePaused) {
     const pauseDuration = new Date() - AppState.pauseStartTime;
     AppState.pausedDuration += pauseDuration;
@@ -1842,7 +1847,6 @@ function updateProgressIndicators() {
   const linePosition = Math.min(elapsed * pixelsPerHour, AppState.downtimeDuration * pixelsPerHour);
   const currentLine = document.getElementById('currentTimeLine');
   currentLine.style.left = `${linePosition}px`;
-  currentLine.style.display = 'block';
   
   // Calculate elapsed time in HH:MM:SS format
   const totalSeconds = Math.floor(elapsedMs / 1000);
@@ -2213,22 +2217,7 @@ function generateReport(){
     if (fill) {
       fill.style.width = pct + "%";
     }
-  
-  try {
-    if (AppState.downtimeStarted && AppState.downtimeStartTime) {
-      const now = new Date();
-      const elapsedMs = now - AppState.downtimeStartTime - (AppState.pausedDuration || 0);
-      const elapsed = elapsedMs / 3600000;
-      const pixelsPerHour = 60;
-      const linePosition = Math.min(elapsed * pixelsPerHour, AppState.downtimeDuration * pixelsPerHour);
-      const currentLine = document.getElementById('currentTimeLine');
-      if (currentLine) {
-        currentLine.style.left = `${linePosition}px`;
-        currentLine.style.display = 'block';
-      }
-    }
-  } catch {}
-}
+  }
 
   function applyRemoteState(st){
     const s = S();
@@ -2247,8 +2236,6 @@ function generateReport(){
     if (tp && typeof st.transformCycle === "string" && tp.value !== st.transformCycle) tp.value = st.transformCycle;
 
     lockFieldsForStarted(!!st.downtimeStarted);
-    try { if (typeof window.updateTimeline === "function") window.updateTimeline(); } catch {}
-
 
     try {
       if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
