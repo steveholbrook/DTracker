@@ -1393,18 +1393,18 @@ function generateTimelineRows() {
   // Containers for track rows and control rows
   const trackContainer = document.getElementById('timelineRows');
   const controlsContainer = document.getElementById('timelineControlsRows');
-  // Ensure both containers exist (timelineControlsRows may not exist on initial load)
   if (trackContainer) trackContainer.innerHTML = '';
   if (controlsContainer) controlsContainer.innerHTML = '';
   
-  // Sort runbooks by sequence
-  const sortedRunbooks = [...AppState.runbooks].sort((a, b) => a.sequence - b.sequence);
-  
+  // Sort and FILTER: only include rows with a non-empty runblock
+  const sortedRunbooks = [...AppState.runbooks]
+    .sort((a, b) => a.sequence - b.sequence)
+    .filter(rb => (rb && (rb.runblock || '').trim().length > 0));
+
+  // Render only visible runbooks
   sortedRunbooks.forEach((runbook, index) => {
-    // Create track row for the left scrollable area
     const trackRow = createTimelineRow(runbook, index);
     if (trackContainer) trackContainer.appendChild(trackRow);
-    // Create control row for the right fixed area
     const controlRow = createTimelineControlRow(runbook);
     if (controlsContainer) controlsContainer.appendChild(controlRow);
   });
