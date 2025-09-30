@@ -607,10 +607,6 @@
   .block-conversion{background:#9C27B0;}
   .block-validation{background:#00BCD4;}
 
-  /* Preparation strategy color */
-  .block-preparation{background:#607D8B;}
-
-
   /*
     Style the runblock name label that is associated with each timeline block.
     The label appears to the left of the block (outside of it) so users can
@@ -868,6 +864,17 @@
 }
 .timeline-control-row{ height: 24px !important; }
 .timeline-control-cell{ display:flex; align-items:center; height:24px; }
+
+/* --- Row alignment hardening --- */
+.timeline-row, .timeline-control-row, .timeline-control-cell{
+  box-sizing: border-box;
+  height: 20px !important;
+  line-height: 20px;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin: 0;
+}
+
 </style>
 
   <!--
@@ -1012,10 +1019,6 @@
           <div class="legend-color block-validation"></div>
           <span>Validation</span>
         </div>
-        <div class="legend-item">
-          <div class="legend-color block-preparation"></div>
-          <span>Preparation</span>
-        </div>
       
         <button class="btn success" id="reportBtn" onclick="generateReport()" style="margin-left:auto">Report</button>
       </div>
@@ -1092,8 +1095,8 @@ const AppState = {
 };
 
 // Strategy and Phase options
-const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation', 'Preparation'];
-const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support', 'Collector', 'NZD'];
+const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation'];
+const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support'];
 
 // Reset everything to default state
 function resetApplication() {
@@ -1377,7 +1380,10 @@ function updateTimeline() {
     // Ensure the finish line spans the height of the scrollable area
     finishLine.style.display = 'block';
   }
+
+  try{ ensureRowAlignment(); }catch(e){}
 }
+
 
 function generateTimeScale(hours) {
   const scale = document.getElementById('timelineScale');
@@ -2003,10 +2009,39 @@ function generateReport(){
     window.addEventListener('load', function() {
       navigator.serviceWorker.register('service-worker.js')
         .catch(function(err) {
-          console.error('Service worker registration failed:', err);
+          console.error('Service worker registrati
+try{ window.addEventListener('resize', ensureRowAlignment, {passive:true}); }catch(e){}
+try{ if (document.fonts && document.fonts.ready){ document.fonts.ready.then(()=> ensureRowAlignment()); } }catch(e){}
+
+(function setupScrollSync(){
+  try{
+    const leftPane = document.getElementById('timelineRows')?.parentElement;
+    const rightPane = document.getElementById('timelineControlsRows')?.parentElement;
+    if (!leftPane || !rightPane) return;
+    let syncing = false;
+    leftPane.addEventListener('scroll', ()=>{ if (syncing) return; syncing = true; rightPane.scrollTop = leftPane.scrollTop; syncing=false; }, {passive:true});
+    rightPane.addEventListener('scroll', ()=>{ if (syncing) return; syncing = true; leftPane.scrollTop = rightPane.scrollTop; syncing=false; }, {passive:true});
+  }catch(e){}
+})();
+on failed:', err);
         });
     });
   }
+
+function ensureRowAlignment(){
+  try{
+    const rows = Array.from(document.querySelectorAll('#timelineRows .timeline-row'));
+    const ctrls = Array.from(document.querySelectorAll('#timelineControlsRows .timeline-control-row'));
+    const n = Math.min(rows.length, ctrls.length);
+    for (let i=0; i<n; i++){
+      const h = Math.max(20, Math.round(rows[i].getBoundingClientRect().height));
+      rows[i].style.height = h + 'px';
+      ctrls[i].style.height = h + 'px';
+      const cells = ctrls[i].querySelectorAll('.timeline-control-cell');
+      cells.forEach(c => { c.style.height = h + 'px'; c.style.lineHeight = h + 'px'; });
+    }
+  }catch(e){}
+}
 </script>
 
 
