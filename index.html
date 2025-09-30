@@ -863,6 +863,33 @@
 
 
   .block-preparation{background:#009688;}
+
+/* Footer/legend row: key on the left, Report on the far right */
+.legend-row, .legend-container, .timeline-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* Push the report button to the far right if it shares a row */
+#reportBtn {
+  margin-left: auto !important;
+  align-self: center;
+  background: #1976D2 !important;
+  border-color: #115293 !important;
+  color: #fff !important;
+}
+#reportBtn:hover {
+  background: #1565C0 !important;
+  border-color: #0D47A1 !important;
+}
+
+
+/* Fallback: if legend and report button share a common parent, make it flex */
+.legend + #reportBtn,
+.legend ~ #reportBtn {
+  margin-left: auto !important;
+}
+
 </style>
 
   <!--
@@ -986,7 +1013,7 @@
         </div>
       </div>
       
-      <div class="legend">
+      <div class="legend legend-container">
         <div class="legend-item">
           <div class="legend-color block-export">
         <div class="legend-item">
