@@ -821,19 +821,6 @@
     .timeline-container{ overflow:visible !important; }
   }
 
-
-/* --- Visibility boost for live cursor (host & viewer) --- */
-.current-time-line{
-  background: var(--sap-error) !important;
-  opacity: 1 !important;
-  z-index: 100 !important;
-  pointer-events: none;
-}
-.current-time-label{
-  z-index: 101 !important;
-  pointer-events: none;
-}
-
 </style>
 
   <!--
@@ -938,7 +925,7 @@
           <!-- Finish line indicator will be positioned at the end of the downtime window -->
           <div id="finishLine" class="finish-line"></div>
           <!-- Current time indicator -->
-          <div class="current-time-line" id="currentTimeLine">
+          <div class="current-time-line" id="currentTimeLine" style="display:none;">
             <div class="current-time-label" id="currentTimeLabel">00:00:00</div>
           </div>
         </div>
@@ -1054,8 +1041,8 @@ const AppState = {
 };
 
 // Strategy and Phase options
-const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation'];
-const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support'];
+const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation', 'Preparation'];
+const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support', 'Collector', 'NZD'];
 
 // Reset everything to default state
 function resetApplication() {
@@ -1178,7 +1165,7 @@ function renderRunbookTable() {
     // downtime has started and is not paused, inputs and selects are
     // disabled to prevent accidental modification.  Otherwise they remain
     // editable.  This logic does not apply to the timeline controls.
-    const editingDisabled = (AppState.downtimeStarted && !AppState.downtimePaused) ? 'disabled' : '';
+    const editingDisabled = ((typeof viewerForced!=='undefined' && viewerForced) || (AppState.downtimeStarted && !AppState.downtimePaused)) ? 'disabled' : '';
     row.innerHTML = `
       <td>
         <input type="number" min="1" max="30" value="${runbook.sequence}" 
@@ -1320,14 +1307,6 @@ function clearRunbook() {
 }
 
 function updateTimeline() {
-
-try{
-  var _line = document.getElementById('currentTimeLine');
-  var _label = document.getElementById('currentTimeLabel');
-  if (_line) _line.style.display = 'block';
-  if (_label) _label.style.display = 'block';
-}catch(e){}
-
   const duration = parseInt(document.getElementById('downtimeDuration').value) || 24;
   AppState.downtimeDuration = duration;
   
@@ -1454,7 +1433,8 @@ function createTimelineRow(runbook, index) {
 
 // Create a separate control row for the right fixed area of the timeline
 function createTimelineControlRow(runbook) {
-  const row = document.createElement('div');
+  const isViewer = (typeof viewerForced !== 'undefined' && viewerForced);
+const row = document.createElement('div');
   row.className = 'timeline-control-row';
   // Determine whether start/duration should be rendered as editable inputs or
   // static text.  We no longer disable editing when downtime is running;
@@ -1472,7 +1452,12 @@ function createTimelineControlRow(runbook) {
     span.textContent = `${String(runbook.scheduleHours).padStart(2,'0')}:${String(runbook.scheduleMinutes).padStart(2,'0')}`;
     startCell.appendChild(span);
   } else {
-    // Before completion, expose an input field to set the start time (HH:MM)
+    if (isViewer) {
+      const span = document.createElement('span');
+      span.textContent = `${String(runbook.scheduleHours).padStart(2,'0')}:${String(runbook.scheduleMinutes).padStart(2,'0')}`;
+      startCell.appendChild(span);
+    } else {
+    // Before completion (host only), expose an input field to set the start time (HH:MM)
     const input = document.createElement('input');
     input.type = 'text';
     // Accept up to 3-digit hours and 2-digit minutes in HH:MM format
@@ -1483,6 +1468,7 @@ function createTimelineControlRow(runbook) {
     input.onchange = function() { updateScheduleTime(runbook.id, this.value); };
     // Inputs remain enabled until the runblock is completed
     startCell.appendChild(input);
+    }
   }
   row.appendChild(startCell);
 
@@ -1495,6 +1481,11 @@ function createTimelineControlRow(runbook) {
     span.textContent = `${String(runbook.durationHours).padStart(2,'0')}:${String(runbook.durationMinutes).padStart(2,'0')}`;
     durationCell.appendChild(span);
   } else {
+    if (isViewer) {
+      const span = document.createElement('span');
+      span.textContent = `${String(runbook.durationHours).padStart(2,'0')}:${String(runbook.durationMinutes).padStart(2,'0')}`;
+      durationCell.appendChild(span);
+    } else {
     // Provide an input to adjust duration (HH:MM)
     const input = document.createElement('input');
     input.type = 'text';
@@ -1516,7 +1507,7 @@ function createTimelineControlRow(runbook) {
   checkbox.checked = runbook.completed;
   checkbox.title = 'Mark as completed';
   // Disable the checkbox when downtime is not actively running (either paused or not started)
-  checkbox.disabled = !(AppState.downtimeStarted && !AppState.downtimePaused);
+  checkbox.disabled =  isViewer ? true : !(AppState.downtimeStarted && !AppState.downtimePaused);
   checkbox.onchange = function() { toggleCompleted(runbook.id, this.checked); };
   completeCell.appendChild(checkbox);
   row.appendChild(completeCell);
@@ -2174,14 +2165,6 @@ function generateReport(){
     if (lbl) lbl.textContent = pctStr;
   }
   function updateViewerTimelineVisual(){
-
-try{
-  var _line = document.getElementById('currentTimeLine');
-  var _label = document.getElementById('currentTimeLabel');
-  if (_line) _line.style.display = 'block';
-  if (_label) _label.style.display = 'block';
-}catch(e){}
-
     if (typeof window.updateTimeline === "function") { 
       try { window.updateTimeline(); return; } catch {}
     }
@@ -2219,6 +2202,24 @@ try{
       if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
       if (typeof window.updateClock === "function") window.updateClock();
     } catch {}
+
+    
+// In viewer mode, mirror host start/end times in the Progress window
+try {
+  if (typeof viewerForced !== 'undefined' && viewerForced) {
+    const sd = document.getElementById('startTimeDisplay');
+    const ed = document.getElementById('endTimeDisplay');
+    if (sd && s.downtimeStartTime instanceof Date) {
+      const stStr = s.downtimeStartTime.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+      sd.textContent = stStr;
+    }
+    if (ed && s.downtimeStartTime instanceof Date) {
+      const end = new Date(s.downtimeStartTime.getTime() + (s.downtimeDuration||24) * 3600000);
+      const etStr = end.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+      ed.textContent = etStr;
+    }
+  }
+} catch(e) { console.warn('Viewer start/end mirror failed:', e); }
 
     updateViewerStatusBanner();
     updateViewerProgress();
@@ -2366,33 +2367,5 @@ try{
   try { if (typeof AppState !== "undefined") window._AppStateRef = AppState; } catch (e) {}
 </script>
 
-
-<script>
-// --- Keep control rows aligned with runblock rows while scrolling ---
-(function(){
-  function syncRightToLeftScroll(){
-    var left = document.querySelector('.timeline-scroll');
-    var rightRows = document.getElementById('timelineControlsRows');
-    if (!left || !rightRows) return;
-    rightRows.style.transform = 'translateY(' + (-left.scrollTop) + 'px)';
-  }
-  function initScrollSync(){
-    var left = document.querySelector('.timeline-scroll');
-    if (!left) return;
-    left.addEventListener('scroll', syncRightToLeftScroll, { passive: true });
-    syncRightToLeftScroll();
-  }
-  if (typeof window.generateTimelineRows === 'function'){
-    var _origGen = window.generateTimelineRows;
-    window.generateTimelineRows = function(){
-      var r = _origGen.apply(this, arguments);
-      requestAnimationFrame(initScrollSync);
-      return r;
-    };
-  }
-  document.addEventListener('DOMContentLoaded', initScrollSync);
-  window.addEventListener('resize', function(){ requestAnimationFrame(initScrollSync); });
-})();
-</script>
-
-</body></html>
+</body>
+</html>
