@@ -821,6 +821,8 @@
     .timeline-container{ overflow:visible !important; }
   }
 
+
+  .block-preparation{ background:#795548; }
 </style>
 
   <!--
@@ -965,8 +967,12 @@
           <div class="legend-color block-validation"></div>
           <span>Validation</span>
         </div>
+        <div class="legend-item">
+          <div class="legend-color block-preparation"></div>
+          <span>Preparation</span>
+        </div>
       
-        <button class="btn success" id="reportBtn" onclick="generateReport()" style="margin-left:auto">Report</button>
+        <button class="btn success" id="reportBtn" data-role="model" class="model-btn">Report</button>
       </div>
     </div>
 
@@ -1041,8 +1047,8 @@ const AppState = {
 };
 
 // Strategy and Phase options
-const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation', 'Preparation'];
-const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support', 'Collector', 'NZD'];
+const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation'];
+const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support'];
 
 // Reset everything to default state
 function resetApplication() {
@@ -1165,7 +1171,7 @@ function renderRunbookTable() {
     // downtime has started and is not paused, inputs and selects are
     // disabled to prevent accidental modification.  Otherwise they remain
     // editable.  This logic does not apply to the timeline controls.
-    const editingDisabled = ((typeof viewerForced!=='undefined' && viewerForced) || (AppState.downtimeStarted && !AppState.downtimePaused)) ? 'disabled' : '';
+    const editingDisabled = (AppState.downtimeStarted && !AppState.downtimePaused) ? 'disabled' : '';
     row.innerHTML = `
       <td>
         <input type="number" min="1" max="30" value="${runbook.sequence}" 
@@ -1368,6 +1374,21 @@ function generateTimelineRows() {
   });
 }
 
+
+function strategyToClass(name){
+  if (!name) return 'export';
+  const map = {
+    'export':'export',
+    'import':'import',
+    'quality gate':'quality',
+    'conversion':'conversion',
+    'validation':'validation',
+    'preparation':'preparation'
+  };
+  const key = String(name).toLowerCase();
+  return map[key] || key.replace(/[^a-z0-9]+/g,'-');
+}
+
 function createTimelineRow(runbook, index) {
   const row = document.createElement('div');
   row.className = 'timeline-row';
@@ -1433,8 +1454,7 @@ function createTimelineRow(runbook, index) {
 
 // Create a separate control row for the right fixed area of the timeline
 function createTimelineControlRow(runbook) {
-  const isViewer = (typeof viewerForced !== 'undefined' && viewerForced);
-const row = document.createElement('div');
+  const row = document.createElement('div');
   row.className = 'timeline-control-row';
   // Determine whether start/duration should be rendered as editable inputs or
   // static text.  We no longer disable editing when downtime is running;
@@ -1452,12 +1472,7 @@ const row = document.createElement('div');
     span.textContent = `${String(runbook.scheduleHours).padStart(2,'0')}:${String(runbook.scheduleMinutes).padStart(2,'0')}`;
     startCell.appendChild(span);
   } else {
-    if (isViewer) {
-      const span = document.createElement('span');
-      span.textContent = `${String(runbook.scheduleHours).padStart(2,'0')}:${String(runbook.scheduleMinutes).padStart(2,'0')}`;
-      startCell.appendChild(span);
-    } else {
-    // Before completion (host only), expose an input field to set the start time (HH:MM)
+    // Before completion, expose an input field to set the start time (HH:MM)
     const input = document.createElement('input');
     input.type = 'text';
     // Accept up to 3-digit hours and 2-digit minutes in HH:MM format
@@ -1468,7 +1483,6 @@ const row = document.createElement('div');
     input.onchange = function() { updateScheduleTime(runbook.id, this.value); };
     // Inputs remain enabled until the runblock is completed
     startCell.appendChild(input);
-    }
   }
   row.appendChild(startCell);
 
@@ -1481,11 +1495,6 @@ const row = document.createElement('div');
     span.textContent = `${String(runbook.durationHours).padStart(2,'0')}:${String(runbook.durationMinutes).padStart(2,'0')}`;
     durationCell.appendChild(span);
   } else {
-    if (isViewer) {
-      const span = document.createElement('span');
-      span.textContent = `${String(runbook.durationHours).padStart(2,'0')}:${String(runbook.durationMinutes).padStart(2,'0')}`;
-      durationCell.appendChild(span);
-    } else {
     // Provide an input to adjust duration (HH:MM)
     const input = document.createElement('input');
     input.type = 'text';
@@ -1507,7 +1516,7 @@ const row = document.createElement('div');
   checkbox.checked = runbook.completed;
   checkbox.title = 'Mark as completed';
   // Disable the checkbox when downtime is not actively running (either paused or not started)
-  checkbox.disabled =  isViewer ? true : !(AppState.downtimeStarted && !AppState.downtimePaused);
+  checkbox.disabled = !(AppState.downtimeStarted && !AppState.downtimePaused);
   checkbox.onchange = function() { toggleCompleted(runbook.id, this.checked); };
   completeCell.appendChild(checkbox);
   row.appendChild(completeCell);
@@ -1517,7 +1526,7 @@ const row = document.createElement('div');
 function createTimelineBlock(runbook) {
   const block = document.createElement('div');
   const strategyClass = runbook.strategy.toLowerCase().replace(/\s+/g, '');
-  block.className = `timeline-block block-${strategyClass}`;
+  block.className = `timeline-block block-${strategyToClass(runbook.strategy)}`;
   block.dataset.runbookId = runbook.id;
   // Prevent dragging if the runbook is completed
   if (runbook.completed) {
@@ -2203,24 +2212,6 @@ function generateReport(){
       if (typeof window.updateClock === "function") window.updateClock();
     } catch {}
 
-    
-// In viewer mode, mirror host start/end times in the Progress window
-try {
-  if (typeof viewerForced !== 'undefined' && viewerForced) {
-    const sd = document.getElementById('startTimeDisplay');
-    const ed = document.getElementById('endTimeDisplay');
-    if (sd && s.downtimeStartTime instanceof Date) {
-      const stStr = s.downtimeStartTime.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
-      sd.textContent = stStr;
-    }
-    if (ed && s.downtimeStartTime instanceof Date) {
-      const end = new Date(s.downtimeStartTime.getTime() + (s.downtimeDuration||24) * 3600000);
-      const etStr = end.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
-      ed.textContent = etStr;
-    }
-  }
-} catch(e) { console.warn('Viewer start/end mirror failed:', e); }
-
     updateViewerStatusBanner();
     updateViewerProgress();
     updateViewerTimelineVisual();
@@ -2228,14 +2219,23 @@ try {
 
   // ===== Mode — NO TAKEOVER =====
   let initialApplied=false, lastSent=null, writing=false, remoteController=null, controllerAttempted=false;
-  function canWrite(){ return !viewerForced && remoteController === uid; }
+  function canWrite(){ return !viewerForced && (!remoteController || remoteController === uid); }
   function setReadOnlyUI(ro){
     const modeEl = document.getElementById("rt-mode");
     if (modeEl) modeEl.textContent = ro ? "mode: VIEWER" : "mode: HOST";
     const nodes = document.querySelectorAll("button, input, select, textarea");
-    nodes.forEach(el => { if (!el) return; if (el.id === "rt-copy" || el.id === "rt-reset") return;
-      if (ro) { el.setAttribute("disabled","true"); el.style.pointerEvents="none"; el.style.opacity="0.6"; }
-      else { el.removeAttribute("disabled"); el.style.pointerEvents=""; el.style.opacity=""; } });
+nodes.forEach(el => {
+  if (!el) return;
+  if (el.id === "rt-copy" || el.id === "rt-reset") return; // always allow overlay buttons
+  const isModelBtn = el.dataset?.role === "model" || el.classList?.contains("model-btn") || el.id === "reportBtn";
+  if (ro && !isModelBtn) {
+    el.setAttribute("disabled","true");
+    el.style.pointerEvents="none"; el.style.opacity="0.6";
+  } else {
+    el.removeAttribute("disabled");
+    el.style.pointerEvents=""; el.style.opacity="";
+  }
+});
     lockFieldsForStarted(!!S().downtimeStarted);
     const panel = document.getElementById("rt-viewer-panel");
     if (panel) panel.style.display = ro ? "block" : "none";
