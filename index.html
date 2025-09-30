@@ -569,15 +569,14 @@
   }
   
   .current-time-line{
-    position:absolute;
-    /* Position the current-time indicator immediately below the 20px scale */
-    top:20px;
-    bottom:0;
-    width:2px;
-    background:var(--sap-error);
-    z-index:15;
-    pointer-events:none;
-  }
+  position:absolute;
+  top:0;
+  bottom:0;
+  width:2px;
+  background:red;
+  z-index:9999;
+  pointer-events:none;
+}
   
   .current-time-label{
     position:absolute;
@@ -1713,6 +1712,8 @@ function toggleCompleted(id, checked) {
 }
 
 function startDowntime() {
+  { const l=document.getElementById('currentTimeLine'); if(l) l.style.display='block'; }
+
   AppState.downtimeStarted = true;
   AppState.downtimeStartTime = new Date();
   AppState.pausedDuration = 0;
@@ -1776,6 +1777,8 @@ function pauseDowntime() {
 }
 
 function resumeDowntime() {
+  { const l=document.getElementById('currentTimeLine'); if(l) l.style.display='block'; }
+
   if (AppState.downtimePaused) {
     const pauseDuration = new Date() - AppState.pauseStartTime;
     AppState.pausedDuration += pauseDuration;
@@ -2210,7 +2213,22 @@ function generateReport(){
     if (fill) {
       fill.style.width = pct + "%";
     }
-  }
+  
+  try {
+    if (AppState.downtimeStarted && AppState.downtimeStartTime) {
+      const now = new Date();
+      const elapsedMs = now - AppState.downtimeStartTime - (AppState.pausedDuration || 0);
+      const elapsed = elapsedMs / 3600000;
+      const pixelsPerHour = 60;
+      const linePosition = Math.min(elapsed * pixelsPerHour, AppState.downtimeDuration * pixelsPerHour);
+      const currentLine = document.getElementById('currentTimeLine');
+      if (currentLine) {
+        currentLine.style.left = `${linePosition}px`;
+        currentLine.style.display = 'block';
+      }
+    }
+  } catch {}
+}
 
   function applyRemoteState(st){
     const s = S();
@@ -2470,22 +2488,6 @@ function generateReport(){
       return r;
     };
   }
-  // Show and move the current time line for viewers as well
-  try {
-    if (AppState.downtimeStarted && AppState.downtimeStartTime) {
-      const now = new Date();
-      const elapsedMs = now - AppState.downtimeStartTime - (AppState.pausedDuration || 0);
-      const elapsed = elapsedMs / 3600000;
-      const pixelsPerHour = 60;
-      const linePosition = Math.min(elapsed * pixelsPerHour, AppState.downtimeDuration * pixelsPerHour);
-      const currentLine = document.getElementById('currentTimeLine');
-      if (currentLine) {
-        currentLine.style.left = `${linePosition}px`;
-        currentLine.style.display = 'block';
-      }
-    }
-  } catch {}
-
 })();
 </script>
 </body>
