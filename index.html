@@ -2430,4 +2430,49 @@ function strategyToClass(name){
 }
 </script>
 
+
+<script>
+// Ensure legend (key) order follows STRATEGIES; keeps "Preparation" after "Validation"
+(function(){
+  function reorderLegend(){
+    try{
+      var desired = (window.STRATEGIES && Array.isArray(window.STRATEGIES) ? window.STRATEGIES.slice(0) 
+                    : ['Export','Import','Quality Gate','Conversion','Validation','Preparation'])
+                    .map(function(s){ return String(s).trim(); });
+      // Ensure Preparation appears after Validation even if STRATEGIES changes order later
+      var v = desired.indexOf('Validation');
+      var p = desired.indexOf('Preparation');
+      if (v !== -1 && p !== -1 && p < v) {
+        desired.splice(p, 1);
+        desired.splice(v+1, 0, 'Preparation');
+      }
+      var legend = document.querySelector('.legend');
+      if (!legend) return;
+      var items = Array.prototype.slice.call(legend.querySelectorAll('.legend-item'));
+      items.sort(function(a,b){
+        function name(el){
+          var t = el && el.querySelector('span') ? el.querySelector('span').textContent.trim() : '';
+        	  return t;
+        }
+        return desired.indexOf(name(a)) - desired.indexOf(name(b));
+      });
+      items.forEach(function(el){ legend.appendChild(el); });
+    }catch(e){ console.warn('Legend reorder skipped:', e); }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', reorderLegend);
+  } else {
+    reorderLegend();
+  }
+  if (typeof window.generateTimelineRows === 'function'){
+    var _orig = window.generateTimelineRows;
+    window.generateTimelineRows = function(){
+      var r = _orig.apply(this, arguments);
+      try { reorderLegend(); } catch(e){}
+      return r;
+    };
+  }
+})();
+</script>
+
 </body></html>
