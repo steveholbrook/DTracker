@@ -1,0 +1,2553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Technical Downtime Tracking App</title>
+  <!-- PWA manifest and theme color -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0a6ed1">
+  <!-- jsPDF and html2canvas for PDF generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  :root{
+    --sap-shell-bg:#f7f7f7;
+    --sap-panel:#ffffff;
+    --sap-accent:#0a6ed1;
+    --sap-accent-2:#0854a0;
+    --sap-text:#222;
+    --sap-muted:#6a6d70;
+    --sap-border:#d9d9d9;
+    --sap-success:#107e3e;
+    --sap-warning:#e9730c;
+    --sap-error:#bb0000;
+    --radius:8px;
+    --gap:12px;
+  }
+  
+  html,body{
+    margin:0;
+    padding:0;
+    background:var(--sap-shell-bg);
+    color:var(--sap-text);
+    font:14px/1.4 "72","Segoe UI",Roboto,Arial,sans-serif;
+  }
+  
+  .app-header{
+    background:linear-gradient(180deg,#0b74de 0%, #095cab 100%);
+    color:#fff;
+    padding:12px 16px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    justify-content:space-between;
+  }
+  
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:12px;
+  }
+  
+  .brand svg{
+    height:28px;
+    width:auto;
+  }
+  
+  h1{
+    margin:0;
+    font-size:18px;
+    font-weight:600;
+    letter-spacing:.2px;
+  }
+  
+  .status-display{
+    display:flex;
+    gap:20px;
+    align-items:center;
+    font-size:13px;
+  }
+  
+  .status-item{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
+  
+  .status-label{
+    opacity:0.9;
+    font-size:11px;
+  }
+  
+  .status-value{
+    font-size:16px;
+    font-weight:700;
+  }
+  
+  .content{
+    padding:16px;
+  }
+  
+  .panel{
+    background:var(--sap-panel);
+    border:1px solid var(--sap-border);
+    border-radius:var(--radius);
+    padding:20px;
+    box-shadow:0 2px 4px rgba(0,0,0,.06);
+    margin-bottom:16px;
+  }
+  
+  h2{
+    margin:0 0 12px 0;
+    font-size:18px;
+    font-weight:600;
+    color:var(--sap-text);
+  }
+  
+  h3{
+    margin:20px 0 10px 0;
+    font-size:13px;
+    color:var(--sap-accent);
+    text-transform:uppercase;
+    letter-spacing:.5px;
+    font-weight:600;
+  }
+  
+  .field{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    margin-bottom:16px;
+  }
+  
+  .field-row{
+    display:flex;
+    gap:16px;
+    align-items:flex-end;
+  }
+  
+  label{
+    font-size:12px;
+    color:var(--sap-muted);
+    font-weight:500;
+  }
+  
+  input[type="text"],
+  input[type="time"],
+  input[type="number"],
+  select{
+    padding:9px 12px;
+    border:1px solid var(--sap-border);
+    border-radius:6px;
+    background:#fff;
+    color:var(--sap-text);
+    font-size:14px;
+    transition:border-color 0.2s;
+  }
+  
+  input[type="text"]:focus,
+  input[type="time"]:focus,
+  input[type="number"]:focus,
+  select:focus{
+    outline:none;
+    border-color:var(--sap-accent);
+  }
+  
+  input[type="number"]{
+    text-align:right;
+  }
+  
+  input[readonly]{
+    background:#f8fafb;
+    cursor:default;
+  }
+  
+  .time-display{
+    font-family:'Courier New', monospace;
+    font-size:15px;
+    font-weight:600;
+    color:var(--sap-accent-2);
+    padding:8px 12px;
+    background:#f0f7ff;
+    border:1px solid #cce0f5;
+    border-radius:6px;
+    min-width:100px;
+    text-align:center;
+  }
+  
+  .time-input{
+    font-family:'Courier New', monospace;
+    font-size:15px;
+    font-weight:600;
+    color:var(--sap-accent-2);
+    padding:8px 12px;
+    background:#fff;
+    border:1px solid #cce0f5;
+    border-radius:6px;
+    min-width:100px;
+    text-align:center;
+  }
+  
+  .time-input:focus{
+    border-color:var(--sap-accent);
+    box-shadow:0 0 0 2px rgba(10,110,209,0.1);
+  }
+  
+  .table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    margin-top:12px;
+    border-radius:8px;
+    overflow:hidden;
+    box-shadow:0 2px 6px rgba(0,0,0,.1);
+  }
+  
+  .table th,
+  .table td{
+    border-bottom:1px solid var(--sap-border);
+    border-right:1px solid var(--sap-border);
+    padding:10px;
+    text-align:left;
+    vertical-align:middle;
+  }
+  
+  .table th:last-child,
+  .table td:last-child{
+    border-right:none;
+  }
+  
+  .table tbody tr:last-child td{
+    border-bottom:none;
+  }
+  
+  .table th{
+    background:linear-gradient(180deg, #f8fafb 0%, #f2f5f7 100%);
+    font-weight:600;
+    font-size:12px;
+    color:var(--sap-text);
+    text-transform:uppercase;
+    letter-spacing:0.5px;
+  }
+  
+  .table td{
+    background:#fff;
+    font-size:14px;
+  }
+  
+  .table tbody tr:hover td{
+    background:#f8fafb;
+  }
+  
+  .table td.center,
+  .table th.center{
+    text-align:center;
+  }
+  
+  .btn{
+    padding:9px 14px;
+    border-radius:6px;
+    border:1px solid var(--sap-border);
+    background:#fff;
+    color:var(--sap-text);
+    cursor:pointer;
+    font-size:14px;
+    font-weight:500;
+    transition:all 0.2s;
+  }
+  
+  .btn:hover{
+    background:#f5f5f5;
+    border-color:var(--sap-accent);
+  }
+  
+  .btn.primary{
+    background:var(--sap-accent);
+    color:#fff;
+    border-color:var(--sap-accent-2);
+  }
+  
+  .btn.primary:hover{
+    background:var(--sap-accent-2);
+  }
+  
+  .btn.warning{
+    background:var(--sap-warning);
+    color:#fff;
+    border-color:#d96a0c;
+  }
+  
+  .btn.warning:hover{
+    background:#d96a0c;
+  }
+  
+  .btn.small{
+    padding:6px 10px;
+    font-size:12px;
+  }
+  
+  .btn.danger{
+    background:#fff;
+    color:var(--sap-error);
+    border-color:var(--sap-error);
+  }
+  
+  .btn.danger:hover{
+    background:#fee;
+    color:var(--sap-error);
+  }
+  
+  .btnbar{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    margin-top:16px;
+  }
+  
+  /* Timeline Styles */
+  .timeline-container{
+    background:#fff;
+    border:1px solid var(--sap-border);
+    border-radius:8px;
+    padding:0;
+    margin-top:16px;
+    overflow-x:auto;
+    position:relative;
+    display:flex;
+    width:100%;
+  }
+  
+  .timeline-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:20px;
+    padding-bottom:12px;
+    border-bottom:1px solid var(--sap-border);
+  }
+  
+  .timeline-info{
+    display:flex;
+    gap:30px;
+  }
+  
+  .timeline-field{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+  }
+  
+  .timeline-field label{
+    font-size:11px;
+    color:var(--sap-muted);
+  }
+  
+  .timeline-scroll{
+    flex:1 1 auto;
+    overflow-x:auto;
+    overflow-y:hidden;
+    position:relative;
+  }
+  
+  .timeline-right{
+    flex:0 0 270px;
+    display:flex;
+    flex-direction:column;
+    border-left:2px solid var(--sap-border);
+  }
+  
+  .timeline-right-header{
+    display:grid;
+    grid-template-columns:70px 70px 60px 70px;
+    align-items:center;
+    height:24px;
+    background:linear-gradient(180deg, #f8fafb 0%, #f2f5f7 100%);
+    border-bottom:1px solid var(--sap-border);
+  }
+  
+  .timeline-right-header .header-cell{
+    font-weight:600;
+    font-size:10px;
+    text-transform:uppercase;
+    color:var(--sap-muted);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-right:1px solid #e5e5e5;
+    padding:0;
+    height:100%;
+  }
+  
+  .timeline-right-header .header-cell:last-child{
+    border-right:none;
+  }
+  
+  #timelineControlsRows{
+    display:flex;
+    flex-direction:column;
+  }
+  
+  .timeline-row{
+    display:flex;
+    align-items:center;
+    height:24px;
+    border-bottom:1px solid #e5e5e5;
+    position:relative;
+    transition:background 0.2s;
+  }
+  
+  .timeline-row:hover{
+    background:rgba(10,110,209,0.03);
+  }
+  
+  .timeline-row:last-child{
+    border-bottom:none;
+  }
+  
+  .timeline-track{
+    flex:0 0 auto;
+    height:24px;
+    position:relative;
+    background-image:repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 59px,
+      #e5e5e5 59px,
+      #e5e5e5 60px
+    );
+    background-position:0 0;
+    border-right:2px solid var(--sap-border);
+  }
+  
+  .timeline-control-row{
+    display:grid;
+    grid-template-columns:70px 70px 60px 70px;
+    height:24px;
+    border-bottom:1px solid #e5e5e5;
+  }
+  
+  .timeline-control-cell{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:12px;
+    color:var(--sap-text);
+    background:linear-gradient(180deg, #fafbfc 0%, #f8f9fa 100%);
+    border-right:1px solid #e5e5e5;
+  }
+  
+  .timeline-control-row .timeline-control-cell:last-child{
+    border-right:none;
+  }
+  
+  .timeline-control-cell input[type="text"]{
+    width:90%;
+    text-align:center;
+    border:1px solid #d5d5d5;
+    border-radius:3px;
+    font-size:11px;
+    padding:2px 3px;
+  }
+  
+  .timeline-control-cell input[type="text"]:focus{
+    border-color:var(--sap-accent);
+    box-shadow:0 0 0 2px rgba(10,110,209,0.1);
+  }
+  
+  .timeline-control-cell input[type="checkbox"]{
+    cursor:pointer;
+    width:16px;
+    height:16px;
+    accent-color:var(--sap-success);
+  }
+  
+  .timeline-scale{
+    height:24px;
+    position:relative;
+    background:linear-gradient(180deg, #f8fafb 0%, #f2f5f7 100%);
+    border-bottom:1px solid var(--sap-border);
+    border-right:2px solid var(--sap-border);
+    flex:0 0 auto;
+  }
+  
+  .timeline-hour{
+    position:absolute;
+    font-size:10px;
+    color:var(--sap-muted);
+    top:5px;
+    font-weight:600;
+  }
+  
+  .timeline-hour:hover{
+    color:var(--sap-accent);
+  }
+  
+  .timeline-block{
+    position:absolute;
+    height:14px;
+    top:5px;
+    border-radius:3px;
+    cursor:move;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0 4px;
+    color:#fff;
+    font-size:10px;
+    font-weight:600;
+    transition:opacity 0.2s;
+    box-shadow:0 1px 2px rgba(0,0,0,0.2);
+    user-select:none;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  
+  .timeline-block:hover{
+    opacity:0.9;
+    z-index:10;
+  }
+  
+  .timeline-block.dragging{
+    opacity:0.7;
+    z-index:20;
+  }
+  
+  .timeline-block.completed{
+    background-image:repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 10px,
+      rgba(255,255,255,0.3) 10px,
+      rgba(255,255,255,0.3) 20px
+    );
+    opacity:0.4;
+    filter: grayscale(100%);
+  }
+  
+  /* Block label outside */
+  .block-label{
+    position:absolute;
+    left:100%;
+    margin-left:6px;
+    white-space:nowrap;
+    color:var(--sap-text);
+    font-size:11px;
+    font-weight:500;
+    top:50%;
+    transform:translateY(-50%);
+    pointer-events:none;
+  }
+  
+  .quality-diamond + .block-label{
+    left:auto;
+    right:100%;
+    margin-right:6px;
+    margin-left:0;
+  }
+  
+  /* Critical path indicators */
+  .timeline-block.critical {
+    box-shadow: 0 0 8px rgba(255, 0, 0, 0.6), 0 2px 4px rgba(0,0,0,0.3);
+    animation: pulse 2s infinite;
+  }
+  
+  @keyframes pulse {
+    0% { box-shadow: 0 0 8px rgba(255, 0, 0, 0.6), 0 2px 4px rgba(0,0,0,0.3); }
+    50% { box-shadow: 0 0 16px rgba(255, 0, 0, 0.8), 0 2px 4px rgba(0,0,0,0.3); }
+    100% { box-shadow: 0 0 8px rgba(255, 0, 0, 0.6), 0 2px 4px rgba(0,0,0,0.3); }
+  }
+  
+  .critical-indicator {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 14px;
+    height: 14px;
+    background: #ff0000;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 9px;
+    font-weight: bold;
+    z-index: 100;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  }
+  
+  .table .critical-cell {
+    text-align: center;
+  }
+  
+  .critical-checkbox {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--sap-error);
+  }
+  
+  .finish-line {
+    position:absolute;
+    top:0;
+    bottom:0;
+    width:2px;
+    background:var(--sap-error);
+    z-index:10;
+  }
+  
+  .finish-line::before{
+    content:'';
+    position:absolute;
+    top:-9px;
+    left:-4px;
+    width:12px;
+    height:8px;
+    background-image:
+      linear-gradient(45deg, #000 25%, transparent 25%),
+      linear-gradient(-45deg, #000 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #000 75%),
+      linear-gradient(-45deg, transparent 75%, #000 75%);
+    background-size:4px 4px;
+    background-position:0 0,0 2px,2px -2px,-2px 0;
+  }
+  
+  .current-time-line{
+    position:absolute;
+    top:0;
+    bottom:0;
+    width:2px;
+    background:red;
+    z-index:9999;
+    pointer-events:none;
+  }
+  
+  .current-time-label{
+    position:absolute;
+    top:-22px;
+    left:50%;
+    transform:translateX(-50%);
+    background:var(--sap-error);
+    color:#fff;
+    padding:2px 6px;
+    border-radius:3px;
+    font-size:10px;
+    font-weight:600;
+    white-space:nowrap;
+  }
+  
+  /* Block Colors */
+  .block-preparation{background:#795548;}
+  .block-export{background:#4CAF50;}
+  .block-import{background:#2196F3;}
+  .block-quality{background:#FF9800;}
+  .block-qualitygate{background:#FF9800;}
+  .block-conversion{background:#9C27B0;}
+  .block-validation{background:#00BCD4;}
+  
+  .runblock-name{
+    font-size:10px;
+    color:var(--sap-muted);
+    white-space:nowrap;
+    pointer-events:none;
+  }
+  
+  .quality-diamond{
+    position:absolute;
+    width:14px;
+    height:14px;
+    background:#FF9800;
+    transform:rotate(45deg);
+    top:50%;
+    margin-top:-7px;
+    border-radius:2px;
+    box-shadow:0 1px 2px rgba(0,0,0,0.2);
+  }
+  
+  .legend{
+    display:flex;
+    gap:16px;
+    margin-top:12px;
+    padding-top:12px;
+    border-top:1px solid var(--sap-border);
+    font-size:12px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+  
+  .legend-item{
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  
+  .legend-color{
+    width:16px;
+    height:16px;
+    border-radius:3px;
+  }
+  
+  .info-box{
+    background:#f0f7ff;
+    border:1px solid #cce0f5;
+    border-radius:6px;
+    padding:12px;
+    margin-top:12px;
+    font-size:12px;
+    color:var(--sap-accent-2);
+  }
+  
+  .btn.success{
+    background:var(--sap-success);
+    color:#fff;
+    border-color:#0b6d34;
+  }
+  
+  .btn.success:hover{
+    background:#0b6d34;
+  }
+  
+  .hidden{
+    display:none;
+  }
+  
+  /* Validation warnings */
+  .validation-warning {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 4px;
+    padding: 8px;
+    margin: 8px 0;
+    font-size: 12px;
+    color: #856404;
+  }
+  
+  .conflict-indicator {
+    background: #ff6b6b;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: bold;
+    margin-left: 4px;
+  }
+  
+  @media print{
+    body *{ visibility:hidden !important; }
+    #progressPanel, #progressPanel *{ visibility:visible !important; }
+    #progressPanel{ position:relative; }
+    #progressPanel #reportBtn{ display:none !important; }
+    .timeline-container{ overflow:visible !important; }
+  }
+  
+  /* Ensure viewer mode readonly styling */
+  .viewer-mode input,
+  .viewer-mode select,
+  .viewer-mode textarea,
+  .viewer-mode button {
+    pointer-events: none !important;
+    opacity: 0.7 !important;
+  }
+  
+  .viewer-mode .timeline-checkbox {
+    pointer-events: none !important;
+  }
+  
+  .viewer-mode #rt-copy,
+  .viewer-mode #rt-reset {
+    pointer-events: auto !important;
+    opacity: 1 !important;
+  }
+</style>
+
+<script
+  src="https://res.cdn.office.net/teams-js/2.0.0/js/MicrosoftTeams.min.js"
+  integrity="sha384-QtTBFeFlfRDZBfwHJHYQp7MdLJ2C3sfAEB1Qpy+YblvjavBye+q87TELpTnvlXw4"
+  crossorigin="anonymous">
+</script>
+</head>
+<body>
+  <div class="app-header">
+    <div class="brand">
+      <svg viewBox="0 0 100 28" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="28" fill="#fff" rx="4"/>
+        <text x="50" y="20" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#0a6ed1">SNP</text>
+      </svg>
+      <h1>Technical Downtime Tracking</h1>
+    </div>
+    <div class="status-display">
+      <div class="status-item">
+        <span class="status-label">Current Time</span>
+        <span class="status-value" id="currentTime">--:--:--</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Status</span>
+        <span class="status-value" id="statusText" style="color:var(--sap-warning);">Not Started</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- Customer Information -->
+    <div class="panel" style="margin-bottom:16px;padding:16px;">
+      <div class="field-row">
+        <div class="field" style="flex:1;">
+          <label>Customer Name *</label>
+          <input type="text" id="customerName" placeholder="Enter customer name" value="ACME Corporation">
+        </div>
+        <div class="field" style="flex:1;">
+          <label>Transform Cycle</label>
+          <select id="transformCycle">
+            <option value="Test Migration">Test Migration</option>
+            <option value="Go Live Simulation">Go Live Simulation</option>
+            <option value="Go-Live">Go-Live</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Progress Tracking Section -->
+    <div id="progressPanel" class="panel">
+      <h2>Progress Tracking Window</h2>
+      
+      <div class="timeline-header">
+        <div class="timeline-info">
+          <div class="timeline-field">
+            <label>Technical Downtime Duration (hrs)</label>
+            <input type="number" id="downtimeDuration" min="1" max="168" value="24" onchange="updateTimeline();calculateEndTime()" style="width:80px;">
+          </div>
+          <div class="timeline-field">
+            <label>Start Time</label>
+            <div id="startTimeContainer">
+              <input type="time" id="startTimeInput" class="time-input" onchange="calculateEndTime()" style="display:none;">
+              <div class="time-display" id="startTimeDisplay">--:--:--</div>
+            </div>
+          </div>
+          <div class="timeline-field">
+            <label>Current Duration</label>
+            <div id="currentDurationContainer">
+              <input type="text" id="currentDurationInput" class="time-input" placeholder="HH:MM:SS" pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}" style="display:none;">
+              <div class="time-display" id="currentDurationDisplay">00:00:00</div>
+            </div>
+          </div>
+          <div class="timeline-field">
+            <label>Estimated End Time</label>
+            <div class="time-display" id="endTimeDisplay">--:--:--</div>
+          </div>
+        </div>
+        <div id="downtimeControls">
+          <button class="btn primary" id="startDowntimeBtn" onclick="startDowntime()">Start Downtime</button>
+        </div>
+      </div>
+
+      <div id="validationMessages"></div>
+
+      <div class="timeline-container">
+        <div class="timeline-scroll">
+          <div class="timeline-table-header">
+            <div class="timeline-scale" id="timelineScale">
+              <!-- Hour markers will be generated here -->
+            </div>
+          </div>
+          <div id="timelineRows">
+            <!-- Timeline track rows will be generated here -->
+          </div>
+          <div id="finishLine" class="finish-line"></div>
+          <div class="current-time-line" id="currentTimeLine" style="display:none;">
+            <div class="current-time-label" id="currentTimeLabel">00:00:00</div>
+          </div>
+        </div>
+        <div class="timeline-right">
+          <div class="timeline-right-header">
+            <div class="header-cell">START</div>
+            <div class="header-cell">PLAN</div>
+            <div class="header-cell">END</div>
+            <div class="header-cell">ACTUAL</div>
+          </div>
+          <div id="timelineControlsRows">
+            <!-- Timeline control rows will be generated here -->
+          </div>
+        </div>
+      </div>
+      
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-color block-preparation"></div>
+          <span>Preparation</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color block-export"></div>
+          <span>Export</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color block-import"></div>
+          <span>Import</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color block-quality"></div>
+          <span>Quality Gate</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color block-conversion"></div>
+          <span>Conversion</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color block-validation"></div>
+          <span>Validation</span>
+        </div>
+        <div class="legend-item" style="margin-left:auto;">
+          <div style="width:16px;height:16px;background:#ff0000;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:10px;font-weight:bold;">!</div>
+          <span>Critical Path</span>
+        </div>
+      
+        <button class="btn success" id="reportBtn" onclick="generatePDFReport()" style="margin-left:16px">📄 PDF Report</button>
+      </div>
+    </div>
+
+    <!-- Model Parameters Section -->
+    <div class="panel">
+      <h2>Model Parameters</h2>
+
+      <h3>Runbook Configuration</h3>
+      <table class="table" id="runbookTable">
+        <thead>
+          <tr>
+            <th style="width:60px;">Sequence</th>
+            <th style="width:120px;">Strategy</th>
+            <th style="width:120px;">Phase</th>
+            <th style="width:160px;">Runblock</th>
+            <th style="width:180px;">Responsibility</th>
+            <th style="width:60px;text-align:center;">Critical</th>
+            <th style="width:80px;text-align:center;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="runbookBody">
+          <!-- Dynamic rows will be added here -->
+        </tbody>
+      </table>
+      
+      <div class="btnbar">
+        <button class="btn primary" onclick="addRunbookRow()">+ Add Line</button>
+        <button class="btn" onclick="clearRunbook()">Clear All</button>
+        <div style="margin-left:auto;">
+          <input type="file" id="uploadFile" accept=".csv" class="hidden" onchange="uploadExcel(event)">
+          <button class="btn" onclick="downloadExcel()">📥 Download CSV</button>
+          <button class="btn" onclick="document.getElementById('uploadFile').click()">📤 Upload CSV</button>
+        </div>
+      </div>
+      
+      <div class="info-box">
+        <strong>Instructions:</strong><br>
+        • Enter sequences 1-30 to define execution order<br>
+        • Select strategy and phase for each runblock<br>
+        • Enter runblock name for identification (required for timeline display)<br>
+        • Mark critical path items with the Critical checkbox<br>
+        • Schedule time shows hours:minutes after downtime start<br>
+        • PLAN controls the planned duration of each runblock<br>
+        • ACTUAL is automatically populated when END is checked
+      </div>
+    </div>
+  </div>
+
+<script>
+// Initialize Microsoft Teams if running inside Teams
+if (typeof microsoftTeams !== 'undefined' && microsoftTeams.app && typeof microsoftTeams.app.initialize === 'function') {
+  const validOrigins = ['https://snpcom.sharepoint.com'];
+  microsoftTeams.app.initialize(validOrigins).catch(() => {
+    console.warn('Teams initialization failed or not running inside Teams');
+  });
+}
+
+// Global state
+const AppState = {
+  runbooks: [],
+  downtimeStarted: false,
+  downtimeStartTime: null,
+  downtimeDuration: 24,
+  downtimePaused: false,
+  pausedDuration: 0,
+  pauseStartTime: null,
+  currentDraggedBlock: null,
+  dragOffset: 0,
+  completionTimes: {}  // Store actual completion times
+};
+
+// Strategy and Phase options
+const STRATEGIES = ['Preparation', 'Export', 'Import', 'Quality Gate', 'Conversion', 'Validation'];
+const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support', 'Collector', 'NZD'];
+
+// Browser close confirmation
+window.addEventListener('beforeunload', function (e) {
+  if (window.canWrite && window.canWrite() && AppState.downtimeStarted) {
+    const confirmationMessage = 'You have an active downtime session. Are you sure you want to leave?';
+    e.returnValue = confirmationMessage;
+    return confirmationMessage;
+  }
+});
+
+// Initialize application
+document.addEventListener('DOMContentLoaded', function() {
+  initializeApp();
+  updateClock();
+  setInterval(updateClock, 1000);
+});
+
+function initializeApp() {
+  updateTimeline();
+  setupStartTimeInputs();
+  calculateEndTime();
+}
+
+function setupStartTimeInputs() {
+  // Show input fields when downtime is not started
+  if (!AppState.downtimeStarted) {
+    document.getElementById('startTimeInput').style.display = 'block';
+    document.getElementById('startTimeDisplay').style.display = 'none';
+    document.getElementById('currentDurationInput').style.display = 'block';
+    document.getElementById('currentDurationDisplay').style.display = 'none';
+    
+    // Set default start time to current time
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    document.getElementById('startTimeInput').value = `${hours}:${minutes}`;
+  }
+}
+
+function calculateEndTime() {
+  const duration = parseInt(document.getElementById('downtimeDuration').value) || 24;
+  const startTimeInput = document.getElementById('startTimeInput');
+  const endTimeDisplay = document.getElementById('endTimeDisplay');
+  
+  if (!AppState.downtimeStarted && startTimeInput.value) {
+    const [hours, minutes] = startTimeInput.value.split(':').map(Number);
+    const startDate = new Date();
+    startDate.setHours(hours, minutes, 0);
+    
+    const endDate = new Date(startDate.getTime() + duration * 3600000);
+    
+    const endHours = String(endDate.getHours()).padStart(2, '0');
+    const endMinutes = String(endDate.getMinutes()).padStart(2, '0');
+    const endSeconds = String(endDate.getSeconds()).padStart(2, '0');
+    
+    let displayText = `${endHours}:${endMinutes}:${endSeconds}`;
+    
+    // Calculate days difference
+    const daysDiff = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24));
+    if (daysDiff > 0) {
+      displayText += ` (+${daysDiff} day${daysDiff > 1 ? 's' : ''})`;
+    }
+    
+    endTimeDisplay.textContent = displayText;
+  }
+}
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById('currentTime').textContent = 
+    now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  
+  if (AppState.downtimeStarted && AppState.downtimeStartTime && !AppState.downtimePaused) {
+    updateDuration();
+    updateProgressIndicators();
+  }
+}
+
+function updateDuration() {
+  if (!AppState.downtimeStartTime) return;
+  
+  const now = new Date();
+  const elapsed = now - AppState.downtimeStartTime - AppState.pausedDuration;
+  const hours = Math.floor(elapsed / 3600000);
+  const minutes = Math.floor((elapsed % 3600000) / 60000);
+  const seconds = Math.floor((elapsed % 60000) / 1000);
+  
+  const durationDisplay = document.getElementById('currentDurationDisplay');
+  durationDisplay.textContent = 
+    `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+// Data Validation Functions
+function validateSchedules() {
+  const warnings = [];
+  const criticalPathItems = AppState.runbooks.filter(r => r.critical);
+  
+  // Check for overlapping critical path items
+  for (let i = 0; i < criticalPathItems.length; i++) {
+    for (let j = i + 1; j < criticalPathItems.length; j++) {
+      const item1 = criticalPathItems[i];
+      const item2 = criticalPathItems[j];
+      
+      const start1 = item1.scheduleHours + item1.scheduleMinutes / 60;
+      const end1 = start1 + item1.durationHours + item1.durationMinutes / 60;
+      const start2 = item2.scheduleHours + item2.scheduleMinutes / 60;
+      const end2 = start2 + item2.durationHours + item2.durationMinutes / 60;
+      
+      if ((start1 < end2 && end1 > start2)) {
+        warnings.push(`Critical path conflict: "${item1.runblock}" and "${item2.runblock}" overlap`);
+      }
+    }
+  }
+  
+  // Check for unrealistic durations (> 8 hours for single task)
+  AppState.runbooks.forEach(runbook => {
+    const duration = runbook.durationHours + runbook.durationMinutes / 60;
+    if (duration > 8) {
+      warnings.push(`Warning: "${runbook.runblock}" has duration > 8 hours (${runbook.durationHours}h ${runbook.durationMinutes}m)`);
+    }
+  });
+  
+  // Check for tasks extending beyond downtime window
+  AppState.runbooks.forEach(runbook => {
+    const start = runbook.scheduleHours + runbook.scheduleMinutes / 60;
+    const duration = runbook.durationHours + runbook.durationMinutes / 60;
+    if (start + duration > AppState.downtimeDuration) {
+      warnings.push(`Schedule conflict: "${runbook.runblock}" extends beyond downtime window`);
+    }
+  });
+  
+  return warnings;
+}
+
+function displayValidationWarnings() {
+  const warnings = validateSchedules();
+  const container = document.getElementById('validationMessages');
+  
+  if (!container) return;
+  
+  container.innerHTML = '';
+  if (warnings.length > 0) {
+    const warningDiv = document.createElement('div');
+    warningDiv.className = 'validation-warning';
+    warningDiv.innerHTML = '<strong>⚠ Validation Warnings:</strong><br>' + warnings.join('<br>');
+    container.appendChild(warningDiv);
+  }
+}
+
+function addRunbookRow() {
+  const runbook = {
+    id: Date.now() + Math.random(),
+    sequence: AppState.runbooks.length + 1,
+    strategy: STRATEGIES[0],
+    phase: PHASES[0],
+    runblock: '',
+    responsibility: '',
+    critical: false,
+    scheduleHours: 0,
+    scheduleMinutes: 0,
+    durationHours: 1,
+    durationMinutes: 0,
+    completed: false,
+    actualDuration: null,
+    position: 0
+  };
+  
+  AppState.runbooks.push(runbook);
+  renderRunbookTable();
+  updateTimeline();
+}
+
+function renderRunbookTable() {
+  const tbody = document.getElementById('runbookBody');
+  tbody.innerHTML = '';
+  
+  AppState.runbooks.sort((a, b) => a.sequence - b.sequence);
+  
+  AppState.runbooks.forEach(runbook => {
+    const row = document.createElement('tr');
+    const editingDisabled = (AppState.downtimeStarted && !AppState.downtimePaused) ? 'disabled' : '';
+    row.innerHTML = `
+      <td>
+        <input type="number" min="1" max="30" value="${runbook.sequence}" 
+               style="width:50px;" onchange="updateSequence(${runbook.id}, this.value)" ${editingDisabled}>
+      </td>
+      <td>
+        <select onchange="updateStrategy(${runbook.id}, this.value)" ${editingDisabled}>
+          ${STRATEGIES.map(s => `<option value="${s}" ${runbook.strategy === s ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+      </td>
+      <td>
+        <select onchange="updatePhase(${runbook.id}, this.value)" ${editingDisabled}>
+          ${PHASES.map(p => `<option value="${p}" ${runbook.phase === p ? 'selected' : ''}>${p}</option>`).join('')}
+        </select>
+      </td>
+      <td>
+        <input type="text" value="${runbook.runblock}" placeholder="Enter runblock name" 
+               maxlength="50" style="width:100%;"
+               onchange="updateRunblock(${runbook.id}, this.value)" ${editingDisabled}>
+      </td>
+      <td>
+        <input type="text" value="${runbook.responsibility || ''}" placeholder="Enter responsibility" 
+               maxlength="40" style="width:100%;"
+               onchange="updateResponsibility(${runbook.id}, this.value)" ${editingDisabled}>
+      </td>
+      <td class="critical-cell center">
+        <input type="checkbox" class="critical-checkbox" 
+               ${runbook.critical ? 'checked' : ''} 
+               onchange="updateCritical(${runbook.id}, this.checked)" ${editingDisabled}>
+      </td>
+      <td class="center">
+        <button class="btn small danger" onclick="removeRunbook(${runbook.id})" ${editingDisabled}>Remove</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function updateSequence(id, value) {
+  const runbook = AppState.runbooks.find(r => r.id === id);
+  if (runbook) {
+    const newSequence = parseInt(value) || 1;
+    runbook.sequence = newSequence;
+    
+    const sameSequence = AppState.runbooks.filter(r => r.sequence === newSequence && r.id !== id);
+    if (sameSequence.length > 0) {
+      runbook.scheduleHours = sameSequence[0].scheduleHours;
+      runbook.scheduleMinutes = sameSequence[0].scheduleMinutes;
+    }
+    
+    renderRunbookTable();
+    updateTimeline();
+    displayValidationWarnings();
+  }
+}
+
+function updateStrategy(id, value) {
+  const runbook = AppState.runbooks.find(r => r.id === id);
+  if (runbook) {
+    runbook.strategy = value;
+    updateTimeline();
+  }
+}
+
+function updatePhase(id, value) {
+  const runbook = AppState.runbooks.find(r => r.id === id);
+  if (runbook) {
+    runbook.phase = value;
+    updateTimeline();
+  }
+}
+
+function updateRunblock(id, value) {
+  const runbook = AppState.runbooks.find(r => r.id === id);
+  if (runbook) {
+    runbook.runblock = value;
+    updateTimeline();
+  }
+}
+
+function updateResponsibility(id, value) {
+  const runbook = AppState.runbooks.find(r => r.id === id);
+  if (runbook) {
+    runbook.responsibility = value;
+  }
+}
+
+function updateCritical(id, value) {
+  const runbook = AppState.runbooks.find(r => r.id === id);
+  if (runbook) {
+    runbook.critical = value;
+    updateTimeline();
+    displayValidationWarnings();
+  }
+}
+
+function removeRunbook(id) {
+  AppState.runbooks = AppState.runbooks.filter(r => r.id !== id);
+  renderRunbookTable();
+  updateTimeline();
+  displayValidationWarnings();
+}
+
+function clearRunbook() {
+  if (confirm('Are you sure you want to clear all runbook entries?')) {
+    AppState.runbooks = [];
+    renderRunbookTable();
+    updateTimeline();
+  }
+}
+
+function updateTimeline() {
+  const duration = parseInt(document.getElementById('downtimeDuration').value) || 24;
+  AppState.downtimeDuration = duration;
+  
+  generateTimeScale(duration);
+  generateTimelineRows();
+  displayValidationWarnings();
+
+  const finishLine = document.getElementById('finishLine');
+  if (finishLine) {
+    const pixelsPerHour = 60;
+    const left = AppState.downtimeDuration * pixelsPerHour;
+    finishLine.style.left = `${left}px`;
+    finishLine.style.display = 'block';
+  }
+}
+
+function generateTimeScale(hours) {
+  const scale = document.getElementById('timelineScale');
+  scale.innerHTML = '';
+  
+  const pixelsPerHour = 60;
+  const totalWidth = hours * pixelsPerHour;
+  
+  scale.style.width = `${totalWidth}px`;
+  
+  for (let h = 0; h <= hours; h++) {
+    const marker = document.createElement('div');
+    marker.className = 'timeline-hour';
+    marker.style.left = `${h * pixelsPerHour}px`;
+    marker.textContent = `${h}h`;
+    scale.appendChild(marker);
+  }
+}
+
+function generateTimelineRows() {
+  const trackContainer = document.getElementById('timelineRows');
+  const controlsContainer = document.getElementById('timelineControlsRows');
+  
+  if (trackContainer) trackContainer.innerHTML = '';
+  if (controlsContainer) controlsContainer.innerHTML = '';
+  
+  // Only show rows with non-empty runblock names
+  const visibleRunbooks = [...AppState.runbooks]
+    .filter(rb => rb && rb.runblock && rb.runblock.trim().length > 0)
+    .sort((a, b) => a.sequence - b.sequence);
+
+  visibleRunbooks.forEach((runbook, index) => {
+    const trackRow = createTimelineRow(runbook, index);
+    if (trackContainer) trackContainer.appendChild(trackRow);
+    
+    const controlRow = createTimelineControlRow(runbook);
+    if (controlsContainer) controlsContainer.appendChild(controlRow);
+  });
+}
+
+function createTimelineRow(runbook, index) {
+  const row = document.createElement('div');
+  row.className = 'timeline-row';
+  
+  if (runbook.critical) {
+    row.style.borderLeft = '3px solid #ff0000';
+    row.style.background = 'linear-gradient(90deg, rgba(255,0,0,0.05) 0%, transparent 10%)';
+  }
+  
+  const track = document.createElement('div');
+  track.className = 'timeline-track';
+  track.dataset.runbookId = runbook.id;
+  
+  const pixelsPerHour = 60;
+  const totalWidth = AppState.downtimeDuration * pixelsPerHour;
+  track.style.width = `${totalWidth}px`;
+
+  const isQualityGate = (runbook.strategy === 'Quality Gate');
+  const startPos = runbook.scheduleHours + (runbook.scheduleMinutes / 60);
+  const duration = runbook.durationHours + (runbook.durationMinutes / 60);
+  const startX = startPos * pixelsPerHour;
+
+  if (isQualityGate) {
+    const diamond = document.createElement('div');
+    diamond.className = 'quality-diamond';
+    diamond.style.left = `${Math.max(0, startX - 7)}px`;
+    if (runbook.completed) {
+      diamond.style.opacity = '0.5';
+      diamond.style.filter = 'grayscale(100%)';
+    }
+    if (runbook.critical) {
+      diamond.style.boxShadow = '0 0 8px rgba(255, 0, 0, 0.6)';
+    }
+    
+    // Add label to the left for quality gates
+    const label = document.createElement('div');
+    label.className = 'block-label';
+    label.textContent = `#${runbook.sequence} ${runbook.runblock}`;
+    label.title = `${runbook.runblock} - ${runbook.phase}`;
+    diamond.appendChild(label);
+    
+    track.appendChild(diamond);
+  } else {
+    const block = createTimelineBlock(runbook);
+    track.appendChild(block);
+  }
+
+  row.appendChild(track);
+  track.addEventListener('dragover', handleDragOver);
+  track.addEventListener('drop', handleDrop);
+  return row;
+}
+
+function createTimelineControlRow(runbook) {
+  const row = document.createElement('div');
+  row.className = 'timeline-control-row';
+
+  // START column
+  const startCell = document.createElement('div');
+  startCell.className = 'timeline-control-cell';
+  if (runbook.completed) {
+    const span = document.createElement('span');
+    span.textContent = `${String(runbook.scheduleHours).padStart(2,'0')}:${String(runbook.scheduleMinutes).padStart(2,'0')}`;
+    startCell.appendChild(span);
+  } else {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.pattern = '[0-9]{1,3}:[0-9]{2}';
+    input.placeholder = 'HH:MM';
+    input.value = `${String(runbook.scheduleHours).padStart(2,'0')}:${String(runbook.scheduleMinutes).padStart(2,'0')}`;
+    input.onchange = function() { updateScheduleTime(runbook.id, this.value); };
+    startCell.appendChild(input);
+  }
+  row.appendChild(startCell);
+
+  // PLAN column (formerly DURATION)
+  const planCell = document.createElement('div');
+  planCell.className = 'timeline-control-cell';
+  if (runbook.completed) {
+    const span = document.createElement('span');
+    span.textContent = `${String(runbook.durationHours).padStart(2,'0')}:${String(runbook.durationMinutes).padStart(2,'0')}`;
+    planCell.appendChild(span);
+  } else {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.pattern = '[0-9]{1,3}:[0-9]{2}';
+    input.placeholder = 'HH:MM';
+    input.value = `${String(runbook.durationHours).padStart(2,'0')}:${String(runbook.durationMinutes).padStart(2,'0')}`;
+    input.onchange = function() { updateDurationTime(runbook.id, this.value); };
+    planCell.appendChild(input);
+  }
+  row.appendChild(planCell);
+
+  // END column (formerly COMPLETE)
+  const endCell = document.createElement('div');
+  endCell.className = 'timeline-control-cell';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.className = 'timeline-checkbox';
+  checkbox.checked = runbook.completed;
+  checkbox.title = 'Mark as completed';
+  checkbox.disabled = !(AppState.downtimeStarted && !AppState.downtimePaused);
+  checkbox.onchange = function() { toggleCompleted(runbook.id, this.checked); };
+  endCell.appendChild(checkbox);
+  row.appendChild(endCell);
+  
+  // ACTUAL column (new - read-only)
+  const actualCell = document.createElement('div');
+  actualCell.className = 'timeline-control-cell';
+  const actualSpan = document.createElement('span');
+  actualSpan.style.fontSize = '11px';
+  actualSpan.style.color = runbook.actualDuration ? '#107e3e' : '#999';
+  actualSpan.textContent = runbook.actualDuration || '--:--';
+  actualCell.appendChild(actualSpan);
+  row.appendChild(actualCell);
+  
+  return row;
+}
+
+function createTimelineBlock(runbook) {
+  const block = document.createElement('div');
+  const strategyClass = runbook.strategy.toLowerCase().replace(/\s+/g, '');
+  block.className = `timeline-block block-${strategyClass}`;
+  block.dataset.runbookId = runbook.id;
+  
+  if (runbook.critical) {
+    block.classList.add('critical');
+  }
+  
+  if (runbook.completed) {
+    block.classList.add('completed');
+    block.draggable = false;
+  } else {
+    block.draggable = true;
+  }
+  
+  const pixelsPerHour = 60;
+  const position = runbook.scheduleHours + (runbook.scheduleMinutes / 60);
+  const duration = runbook.durationHours + (runbook.durationMinutes / 60);
+  
+  block.style.left = `${position * pixelsPerHour}px`;
+  block.style.width = `${Math.max(60, duration * pixelsPerHour - 4)}px`;
+  
+  // Add label to the right of block
+  const blockLabel = document.createElement('div');
+  blockLabel.className = 'block-label';
+  blockLabel.textContent = `#${runbook.sequence} ${runbook.runblock}`;
+  blockLabel.title = `${runbook.runblock} - ${runbook.phase}`;
+  block.appendChild(blockLabel);
+  
+  if (runbook.critical) {
+    const indicator = document.createElement('div');
+    indicator.className = 'critical-indicator';
+    indicator.textContent = '!';
+    indicator.title = 'Critical Path Item';
+    block.appendChild(indicator);
+  }
+  
+  if (!runbook.completed) {
+    block.addEventListener('dragstart', handleDragStart);
+    block.addEventListener('dragend', handleDragEnd);
+  }
+  
+  return block;
+}
+
+function handleDragStart(e) {
+  e.dataTransfer.effectAllowed = 'move';
+  e.target.classList.add('dragging');
+  AppState.currentDraggedBlock = e.target;
+  
+  const rect = e.target.getBoundingClientRect();
+  AppState.dragOffset = e.clientX - rect.left;
+}
+
+function handleDragEnd(e) {
+  e.target.classList.remove('dragging');
+  AppState.currentDraggedBlock = null;
+  AppState.dragOffset = 0;
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  
+  if (AppState.currentDraggedBlock && e.currentTarget.classList.contains('timeline-track')) {
+    const track = e.currentTarget;
+    const rect = track.getBoundingClientRect();
+    const x = e.clientX - rect.left - (AppState.dragOffset || 0);
+    const pixelsPerHour = 60;
+    
+    const position = Math.max(0, x / pixelsPerHour);
+    const runbookId = parseFloat(AppState.currentDraggedBlock.dataset.runbookId);
+    const runbook = AppState.runbooks.find(r => r.id === runbookId);
+    
+    if (runbook) {
+      const duration = runbook.durationHours + (runbook.durationMinutes / 60);
+      const maxPosition = AppState.downtimeDuration - duration;
+      const validPosition = Math.min(position, maxPosition);
+      
+      AppState.currentDraggedBlock.style.left = `${validPosition * pixelsPerHour}px`;
+    }
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  
+  if (!AppState.currentDraggedBlock) return;
+  
+  const track = e.currentTarget;
+  const rect = track.getBoundingClientRect();
+  const x = e.clientX - rect.left - (AppState.dragOffset || 0);
+  const pixelsPerHour = 60;
+  const newPosition = Math.max(0, x / pixelsPerHour);
+  
+  const runbookId = parseFloat(AppState.currentDraggedBlock.dataset.runbookId);
+  const runbook = AppState.runbooks.find(r => r.id === runbookId);
+  
+  if (runbook) {
+    const duration = runbook.durationHours + (runbook.durationMinutes / 60);
+    const maxPosition = AppState.downtimeDuration - duration;
+    const finalPosition = Math.min(newPosition, maxPosition);
+    const snappedPosition = Math.round(finalPosition * 4) / 4;
+    
+    const newHours = Math.floor(snappedPosition);
+    const newMinutes = Math.round((snappedPosition % 1) * 60);
+    
+    runbook.scheduleHours = newHours;
+    runbook.scheduleMinutes = newMinutes;
+    
+    const sameSequence = AppState.runbooks.filter(r => r.sequence === runbook.sequence);
+    sameSequence.forEach(r => {
+      r.scheduleHours = newHours;
+      r.scheduleMinutes = newMinutes;
+    });
+    
+    updateTimeline();
+  }
+}
+
+function updateScheduleTime(id, value) {
+  const runbook = AppState.runbooks.find(r => r.id === id);
+  if (runbook) {
+    const parts = value.split(':');
+    const hours = parseInt(parts[0]) || 0;
+    const minutes = parseInt(parts[1]) || 0;
+    
+    runbook.scheduleHours = hours;
+    runbook.scheduleMinutes = minutes;
+    
+    const sameSequence = AppState.runbooks.filter(r => r.sequence === runbook.sequence);
+    sameSequence.forEach(r => {
+      r.scheduleHours = hours;
+      r.scheduleMinutes = minutes;
+    });
+    
+    updateTimeline();
+  }
+}
+
+function updateDurationTime(id, value) {
+  const runbook = AppState.runbooks.find(r => r.id === id);
+  if (runbook) {
+    const parts = value.split(':');
+    const hours = parseInt(parts[0]) || 0;
+    const minutes = parseInt(parts[1]) || 0;
+    
+    runbook.durationHours = hours;
+    runbook.durationMinutes = minutes;
+    updateTimeline();
+  }
+}
+
+function toggleCompleted(id, checked) {
+  const runbook = AppState.runbooks.find(r => r.id === id);
+  if (runbook) {
+    runbook.completed = checked;
+    
+    if (checked && AppState.downtimeStartTime) {
+      // Calculate actual duration when marked as complete
+      const now = new Date();
+      const startTime = new Date(AppState.downtimeStartTime);
+      const scheduledOffset = runbook.scheduleHours * 3600000 + runbook.scheduleMinutes * 60000;
+      const taskStart = new Date(startTime.getTime() + scheduledOffset);
+      
+      const actualMs = now - taskStart - AppState.pausedDuration;
+      const actualHours = Math.floor(actualMs / 3600000);
+      const actualMinutes = Math.floor((actualMs % 3600000) / 60000);
+      
+      runbook.actualDuration = `${String(actualHours).padStart(2,'0')}:${String(actualMinutes).padStart(2,'0')}`;
+      AppState.completionTimes[id] = now;
+    } else if (!checked) {
+      runbook.actualDuration = null;
+      delete AppState.completionTimes[id];
+    }
+    
+    updateTimeline();
+  }
+}
+
+function startDowntime() {
+  // Get the start time from input or use current time
+  const startTimeInput = document.getElementById('startTimeInput');
+  if (startTimeInput && startTimeInput.value) {
+    const [hours, minutes] = startTimeInput.value.split(':').map(Number);
+    const startDate = new Date();
+    startDate.setHours(hours, minutes, 0);
+    AppState.downtimeStartTime = startDate;
+  } else {
+    AppState.downtimeStartTime = new Date();
+  }
+  
+  AppState.downtimeStarted = true;
+  AppState.pausedDuration = 0;
+  
+  const downtimeDuration = parseInt(document.getElementById('downtimeDuration').value) || 24;
+  AppState.downtimeDuration = downtimeDuration;
+  
+  // Hide input fields and show displays
+  document.getElementById('startTimeInput').style.display = 'none';
+  document.getElementById('startTimeDisplay').style.display = 'block';
+  document.getElementById('currentDurationInput').style.display = 'none';
+  document.getElementById('currentDurationDisplay').style.display = 'block';
+  
+  const startTimeStr = AppState.downtimeStartTime.toLocaleTimeString('en-US', 
+    { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  
+  const endTime = new Date(AppState.downtimeStartTime.getTime() + downtimeDuration * 3600000);
+  const endTimeStr = endTime.toLocaleTimeString('en-US', 
+    { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  
+  const daysDiff = Math.floor((endTime - AppState.downtimeStartTime) / (1000 * 60 * 60 * 24));
+  let endDisplay = endTimeStr;
+  if (daysDiff > 0) {
+    endDisplay += ` (+${daysDiff} day${daysDiff > 1 ? 's' : ''})`;
+  }
+  
+  document.getElementById('startTimeDisplay').textContent = startTimeStr;
+  document.getElementById('endTimeDisplay').textContent = endDisplay;
+  document.getElementById('statusText').textContent = 'In Progress';
+  document.getElementById('statusText').style.color = 'var(--sap-error)';
+  
+  document.getElementById('downtimeControls').innerHTML = `
+    <button class="btn warning" onclick="pauseDowntime()">⏸ Pause</button>
+    <button class="btn danger" onclick="stopDowntime()">■ Stop</button>
+  `;
+  
+  const currentLine = document.getElementById('currentTimeLine');
+  currentLine.style.display = 'block';
+  currentLine.style.left = '0px';
+  
+  updateProgressIndicators();
+  updateTimeline();
+  renderRunbookTable();
+}
+
+function pauseDowntime() {
+  if (!AppState.downtimePaused) {
+    AppState.downtimePaused = true;
+    AppState.pauseStartTime = new Date();
+    document.getElementById('statusText').textContent = 'Paused';
+    document.getElementById('statusText').style.color = 'var(--sap-warning)';
+    
+    document.getElementById('downtimeControls').innerHTML = `
+      <button class="btn primary" onclick="resumeDowntime()">▶ Resume</button>
+      <button class="btn danger" onclick="stopDowntime()">■ Stop</button>
+    `;
+
+    updateTimeline();
+    renderRunbookTable();
+  }
+}
+
+function resumeDowntime() {
+  if (AppState.downtimePaused) {
+    const pauseDuration = new Date() - AppState.pauseStartTime;
+    AppState.pausedDuration += pauseDuration;
+    AppState.downtimePaused = false;
+    AppState.pauseStartTime = null;
+    
+    document.getElementById('statusText').textContent = 'In Progress';
+    document.getElementById('statusText').style.color = 'var(--sap-error)';
+    
+    document.getElementById('downtimeControls').innerHTML = `
+      <button class="btn warning" onclick="pauseDowntime()">⏸ Pause</button>
+      <button class="btn danger" onclick="stopDowntime()">■ Stop</button>
+    `;
+    
+    const currentLine = document.getElementById('currentTimeLine');
+    currentLine.style.display = 'block';
+
+    updateTimeline();
+    renderRunbookTable();
+  }
+}
+
+function stopDowntime() {
+  if (confirm('Are you sure you want to stop the downtime tracking? All times will be reset.')) {
+    AppState.downtimeStarted = false;
+    AppState.downtimeStartTime = null;
+    AppState.downtimePaused = false;
+    AppState.pausedDuration = 0;
+    AppState.pauseStartTime = null;
+    
+    // Reset actual durations
+    AppState.runbooks.forEach(r => r.actualDuration = null);
+    AppState.completionTimes = {};
+    
+    setupStartTimeInputs();
+    
+    document.getElementById('startTimeDisplay').textContent = '--:--:--';
+    document.getElementById('endTimeDisplay').textContent = '--:--:--';
+    document.getElementById('currentDurationDisplay').textContent = '00:00:00';
+    document.getElementById('statusText').textContent = 'Not Started';
+    document.getElementById('statusText').style.color = 'var(--sap-warning)';
+    
+    document.getElementById('downtimeControls').innerHTML = `
+      <button class="btn primary" id="startDowntimeBtn" onclick="startDowntime()">Start Downtime</button>
+    `;
+    
+    document.getElementById('currentTimeLine').style.display = 'none';
+    
+    updateTimeline();
+    renderRunbookTable();
+  }
+}
+
+function updateProgressIndicators() {
+  if (!AppState.downtimeStarted || !AppState.downtimeStartTime) return;
+  
+  const now = new Date();
+  const elapsedMs = now - AppState.downtimeStartTime - AppState.pausedDuration;
+  const elapsed = elapsedMs / 3600000;
+  
+  const pixelsPerHour = 60;
+  const linePosition = Math.min(elapsed * pixelsPerHour, AppState.downtimeDuration * pixelsPerHour);
+  const currentLine = document.getElementById('currentTimeLine');
+  currentLine.style.left = `${linePosition}px`;
+  currentLine.style.display = 'block';
+  
+  const totalSeconds = Math.floor(elapsedMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  
+  const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  document.getElementById('currentTimeLabel').textContent = timeStr;
+    
+  if (elapsed >= AppState.downtimeDuration) {
+    document.getElementById('statusText').textContent = 'Completed';
+    document.getElementById('statusText').style.color = 'var(--sap-accent)';
+    
+    updateTimeline();
+  }
+}
+
+function downloadExcel() {
+  const data = AppState.runbooks.map(r => ({
+    Sequence: r.sequence,
+    Strategy: r.strategy,
+    Phase: r.phase,
+    Runblock: r.runblock,
+    Responsibility: r.responsibility || '',
+    Critical: r.critical ? 'Yes' : 'No',
+    ScheduleTime: `${String(r.scheduleHours).padStart(2,'0')}:${String(r.scheduleMinutes).padStart(2,'0')}`,
+    PlannedDuration: `${String(r.durationHours).padStart(2,'0')}:${String(r.durationMinutes).padStart(2,'0')}`,
+    ActualDuration: r.actualDuration || '',
+    Completed: r.completed ? 'Yes' : 'No'
+  }));
+  
+  const headers = Object.keys(data[0] || {});
+  const csvContent = [
+    headers.join(','),
+    ...data.map(row => headers.map(header => `"${row[header] || ''}"`).join(','))
+  ].join('\n');
+  
+  const customerName = document.getElementById('customerName').value || 'customer';
+  const safeCustomerName = customerName.replace(/[^a-zA-Z0-9]/g, '_');
+  const dateStr = new Date().toISOString().slice(0,10);
+  
+  const blob = new Blob([csvContent], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${safeCustomerName}_downtime_runbook_${dateStr}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function uploadExcel(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const text = e.target.result;
+      const lines = text.split('\n');
+      const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+      
+      AppState.runbooks = [];
+      
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim()) {
+          const values = lines[i].match(/(".*?"|[^,]+)/g)?.map(v => v.replace(/"/g, '').trim()) || [];
+          
+          const scheduleTime = values[headers.indexOf('ScheduleTime')] || '00:00';
+          const [scheduleHours, scheduleMinutes] = scheduleTime.split(':').map(Number);
+          
+          const planDuration = values[headers.indexOf('PlannedDuration')] || values[headers.indexOf('Duration')] || '01:00';
+          const [durationHours, durationMinutes] = planDuration.split(':').map(Number);
+          
+          const runbook = {
+            id: Date.now() + Math.random() + i,
+            sequence: parseInt(values[headers.indexOf('Sequence')]) || i,
+            strategy: values[headers.indexOf('Strategy')] || STRATEGIES[0],
+            phase: values[headers.indexOf('Phase')] || PHASES[0],
+            runblock: values[headers.indexOf('Runblock')] || '',
+            responsibility: values[headers.indexOf('Responsibility')] || '',
+            critical: values[headers.indexOf('Critical')] === 'Yes',
+            scheduleHours: scheduleHours || 0,
+            scheduleMinutes: scheduleMinutes || 0,
+            durationHours: durationHours || 1,
+            durationMinutes: durationMinutes || 0,
+            actualDuration: values[headers.indexOf('ActualDuration')] || null,
+            completed: values[headers.indexOf('Completed')] === 'Yes'
+          };
+          
+          AppState.runbooks.push(runbook);
+        }
+      }
+      
+      renderRunbookTable();
+      updateTimeline();
+      alert('Configuration loaded successfully!');
+      
+    } catch (error) {
+      alert('Error loading file. Please check the format.');
+      console.error(error);
+    }
+  };
+  reader.readAsText(file);
+  
+  event.target.value = '';
+}
+
+async function generatePDFReport() {
+  const { jsPDF } = window.jspdf;
+  
+  // Create new PDF document
+  const pdf = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
+  
+  // Get customer info
+  const customerName = document.getElementById('customerName').value || 'Unknown Customer';
+  const transformCycle = document.getElementById('transformCycle').value || 'Unknown Phase';
+  const currentDate = new Date().toLocaleString();
+  
+  // Add header
+  pdf.setFontSize(20);
+  pdf.text('Technical Downtime Report', 20, 20);
+  
+  pdf.setFontSize(12);
+  pdf.text(`Customer: ${customerName}`, 20, 30);
+  pdf.text(`Transform Cycle: ${transformCycle}`, 20, 37);
+  pdf.text(`Generated: ${currentDate}`, 20, 44);
+  
+  // Add status information
+  pdf.setFontSize(14);
+  pdf.text('Execution Status', 20, 55);
+  
+  pdf.setFontSize(10);
+  const statusText = document.getElementById('statusText').textContent;
+  const startTime = document.getElementById('startTimeDisplay').textContent;
+  const endTime = document.getElementById('endTimeDisplay').textContent;
+  const duration = document.getElementById('currentDurationDisplay').textContent;
+  
+  pdf.text(`Status: ${statusText}`, 20, 62);
+  pdf.text(`Start Time: ${startTime}`, 20, 68);
+  pdf.text(`End Time: ${endTime}`, 20, 74);
+  pdf.text(`Current Duration: ${duration}`, 20, 80);
+  
+  // Capture timeline as image
+  const timelineContainer = document.querySelector('.timeline-container');
+  if (timelineContainer) {
+    try {
+      const canvas = await html2canvas(timelineContainer, {
+        scale: 2,
+        logging: false,
+        useCORS: true
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      
+      // Add timeline image
+      pdf.text('Timeline View', 20, 92);
+      const imgWidth = 250;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 20, 97, imgWidth, Math.min(imgHeight, 80));
+      
+      // Add new page for runbook details
+      pdf.addPage();
+      pdf.setFontSize(14);
+      pdf.text('Runbook Details', 20, 20);
+      
+      // Add table headers
+      pdf.setFontSize(9);
+      let yPos = 30;
+      const headers = ['Seq', 'Strategy', 'Phase', 'Runblock', 'Responsibility', 'Critical', 'Start', 'Plan', 'Actual', 'Complete'];
+      const xPositions = [20, 30, 55, 80, 110, 150, 175, 195, 215, 235];
+      
+      headers.forEach((header, i) => {
+        pdf.text(header, xPositions[i], yPos);
+      });
+      
+      // Add table data
+      yPos += 7;
+      AppState.runbooks.forEach((runbook, index) => {
+        if (yPos > 180) {
+          pdf.addPage();
+          yPos = 20;
+          headers.forEach((header, i) => {
+            pdf.text(header, xPositions[i], yPos);
+          });
+          yPos += 7;
+        }
+        
+        const rowData = [
+          runbook.sequence.toString(),
+          runbook.strategy.substring(0, 15),
+          runbook.phase.substring(0, 15),
+          runbook.runblock.substring(0, 20),
+          (runbook.responsibility || '').substring(0, 20),
+          runbook.critical ? 'Yes' : 'No',
+          `${String(runbook.scheduleHours).padStart(2,'0')}:${String(runbook.scheduleMinutes).padStart(2,'0')}`,
+          `${String(runbook.durationHours).padStart(2,'0')}:${String(runbook.durationMinutes).padStart(2,'0')}`,
+          runbook.actualDuration || '--:--',
+          runbook.completed ? 'Yes' : 'No'
+        ];
+        
+        rowData.forEach((data, i) => {
+          pdf.text(data, xPositions[i], yPos);
+        });
+        
+        yPos += 6;
+      });
+      
+      // Add summary statistics
+      pdf.addPage();
+      pdf.setFontSize(14);
+      pdf.text('Summary Statistics', 20, 20);
+      
+      pdf.setFontSize(10);
+      const totalTasks = AppState.runbooks.length;
+      const completedTasks = AppState.runbooks.filter(r => r.completed).length;
+      const criticalTasks = AppState.runbooks.filter(r => r.critical).length;
+      const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+      
+      pdf.text(`Total Tasks: ${totalTasks}`, 20, 30);
+      pdf.text(`Completed Tasks: ${completedTasks}`, 20, 36);
+      pdf.text(`Critical Path Items: ${criticalTasks}`, 20, 42);
+      pdf.text(`Completion Rate: ${completionRate}%`, 20, 48);
+      
+      // Save PDF
+      const safeCustomerName = customerName.replace(/[^a-zA-Z0-9]/g, '_');
+      const dateStr = new Date().toISOString().slice(0,10);
+      pdf.save(`${safeCustomerName}_downtime_report_${dateStr}.pdf`);
+      
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF report. Please try again.');
+    }
+  }
+}
+
+function generateReport() {
+  generatePDFReport();
+}
+
+</script>
+
+<!-- Register the service worker for Progressive Web App support -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('service-worker.js')
+        .catch(function(err) {
+          console.error('Service worker registration failed:', err);
+        });
+    });
+  }
+</script>
+
+<!-- Firebase realtime sync -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAredpIvTx0c7uxn23HZoD3YkTgcG4cHbk",
+    authDomain: "downtime-tracking-135f6.firebaseapp.com",
+    projectId: "downtime-tracking-135f6",
+    storageBucket: "downtime-tracking-135f6.firebaseapp.com",
+    messagingSenderId: "422856401277",
+    appId: "1:422856401277:web:7b10cb426abf816d74ec14",
+    measurementId: "G-CJ2F30SYRY"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  // URL params
+  const url = new URL(window.location.href);
+  let customerParam = url.searchParams.get("customer") || "";
+  let phaseParam = url.searchParams.get("phase") || url.searchParams.get("transformCycle") || "";
+  const viewerForced = url.searchParams.get("viewer") === "1";
+  const nameInput = document.getElementById("customerName");
+  const phaseInput = document.getElementById("transformCycle");
+
+  if (!customerParam && nameInput && nameInput.value) customerParam = nameInput.value;
+  if (!phaseParam && phaseInput && phaseInput.value) phaseParam = phaseInput.value;
+
+  const toKey = s => (s||"default").toString().trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"") || "default";
+  const customerKey = toKey(customerParam);
+
+  if (!url.searchParams.get("customer")) { url.searchParams.set("customer", customerParam || "default"); }
+  if (phaseParam && !url.searchParams.get("phase") && !url.searchParams.get("transformCycle")) {
+    url.searchParams.set("phase", phaseParam);
+  }
+  if (!url.searchParams.get("customer") || (phaseParam && !url.searchParams.get("phase"))) {
+    history.replaceState(null, "", url.toString());
+  }
+
+  if (nameInput && customerParam) nameInput.value = customerParam;
+  if (phaseInput && phaseParam) phaseInput.value = phaseParam;
+
+  // Overlay
+  (function overlay(){
+    const right = document.createElement("div");
+    right.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:100000;min-width:280px";
+    right.innerHTML = `<div style="display:flex;gap:6px;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <div><strong>Customer:</strong> <span id="rt-customer" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${customerParam || "default"}</span></div>
+        <button id="rt-copy" style="padding:4px 8px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#f9f9fb;">Copy link</button>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;justify-content:space-between;">
+        <span id="rt-online" style="display:inline-block;padding:2px 8px;border:1px solid #dcdcdc;border-radius:999px;">0 online</span>
+        <span id="rt-mode" style="font-weight:600;color:#444">mode: —</span>
+      </div>
+      <div id="rt-viewer-panel" style="display:none;margin-top:8px">
+        <div style="font-size:12px;margin-bottom:2px"><b>Status:</b> <span id="rt-status">—</span></div>
+        <div style="font-size:12px;margin-bottom:4px"><b>Start:</b> <span id="rt-start">—</span></div>
+        <div style="font-size:12px;margin-bottom:6px"><b>ETA:</b> <span id="rt-eta">—</span></div>
+        <div style="position:relative;height:10px;border:1px solid #dcdcdc;border-radius:999px;overflow:hidden;background:#f2f3f6">
+          <div id="rt-bar" style="position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg, rgba(0,0,0,.2), rgba(0,0,0,.5))"></div>
+        </div>
+        <div id="rt-bar-label" style="font-size:11px;margin-top:4px;text-align:right">0%</div>
+      </div>`;
+    document.body.appendChild(right);
+    document.getElementById("rt-copy").onclick = async () => {
+      await navigator.clipboard.writeText(window.location.href);
+      const btn = document.getElementById("rt-copy"); 
+      const prev = btn.textContent; 
+      btn.textContent="Copied"; 
+      setTimeout(()=>btn.textContent=prev, 1000);
+    };
+
+    const left = document.createElement("div");
+    left.style.cssText = "position:fixed;left:10px;bottom:10px;z-index:100001";
+    left.innerHTML = `<button id="rt-reset" title="Reset session for all viewers" style="padding:10px 14px;border:none;border-radius:8px;cursor:pointer;background:#d32f2f;color:#fff;font-weight:600;box-shadow:0 2px 6px rgba(0,0,0,.15)">Reset</button>`;
+    document.body.appendChild(left);
+
+    const top = document.createElement("div");
+    top.id = "rt-status-banner";
+    top.style.cssText = "position:fixed;top:6px;left:50%;transform:translateX(-50%);padding:6px 10px;background:#fff;border:1px solid #dcdcdc;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.08);font:13px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;z-index:100002;display:none";
+    top.innerHTML = `<b>Status:</b> <span id="rt-status-top">—</span>`;
+    document.body.appendChild(top);
+  })();
+
+  // Auth + presence
+  await signInAnonymously(auth);
+  const uid = await new Promise((resolve) => onAuthStateChanged(auth, (u)=>{ if(u){ resolve(u.uid); } }));
+  const presenceRef = doc(db, "sessions", customerKey, "presence", uid);
+  
+  async function upsertPresence(){
+    try { 
+      await setDoc(presenceRef, { 
+        name: (nameInput && nameInput.value) || customerParam || "Guest", 
+        lastActive: serverTimestamp() 
+      }, { merge: true }); 
+    }
+    catch(e){ console.error("[presence] setDoc failed:", e); }
+  }
+  
+  await upsertPresence();
+  setInterval(upsertPresence, 20000);
+  window.addEventListener("beforeunload", async () => { 
+    try{ 
+      await setDoc(presenceRef, { 
+        lastActive: serverTimestamp(), 
+        leftAt: serverTimestamp() 
+      }, { merge:true }); 
+    }catch{} 
+  });
+
+  // Online indicator
+  onSnapshot(collection(db, "sessions", customerKey, "presence"), (snap) => {
+    const now = Date.now(); 
+    let online = 0;
+    snap.forEach(d => { 
+      const t = d.data().lastActive?.toMillis?.() || 0; 
+      if (now - t < 45000) online++; 
+    });
+    const el = document.getElementById("rt-online"); 
+    if (el) el.textContent = `${online} online`;
+  });
+
+  // Helpers
+  const sessionRef = doc(db, "sessions", customerKey);
+  const sleep = (ms)=>new Promise(r=>setTimeout(r,ms)); 
+  await sleep(200);
+  
+  function S(){ 
+    return window.AppState || { 
+      runbooks:[], 
+      downtimeStarted:false, 
+      downtimePaused:false, 
+      pausedDuration:0, 
+      downtimeDuration:24, 
+      downtimeStartTime:null,
+      completionTimes: {}
+    }; 
+  }
+
+  function lockFieldsForStarted(started){
+    const lock = (el, yes) => {
+      if (!el) return;
+      if (yes) { 
+        el.setAttribute("disabled","true"); 
+        el.style.pointerEvents="none"; 
+        el.style.opacity="0.7"; 
+        el.title="Locked while timeline is running"; 
+      }
+      else { 
+        el.removeAttribute("disabled"); 
+        el.style.pointerEvents=""; 
+        el.style.opacity=""; 
+        el.title=""; 
+      }
+    };
+    lock(document.getElementById("customerName"), !!started);
+    lock(document.getElementById("transformCycle"), !!started);
+  }
+
+  function serialize(){
+    const s = S();
+    const cn = (document.getElementById("customerName") || {}).value || "";
+    const tp = (document.getElementById("transformCycle") || {}).value || "";
+    return {
+      runbooks: (s.runbooks || []).map(r=>({...r})),
+      downtimeStarted: !!s.downtimeStarted,
+      downtimeStartTime: s.downtimeStartTime ? new Date(s.downtimeStartTime).toISOString() : null,
+      downtimeDuration: s.downtimeDuration ?? 24,
+      downtimePaused: !!s.downtimePaused,
+      pausedDuration: s.pausedDuration ?? 0,
+      completionTimes: s.completionTimes || {},
+      customerName: cn,
+      transformCycle: tp
+    };
+  }
+
+  // Viewer UI helpers
+  function statusString(s){
+    const now = Date.now();
+    if (!s.downtimeStarted || !s.downtimeStartTime) return "Not started";
+    const start = (s.downtimeStartTime instanceof Date) ? s.downtimeStartTime : new Date(s.downtimeStartTime);
+    const endMs = start.getTime() + (s.downtimeDuration||24)*3600*1000;
+    if (s.downtimePaused) return "Paused";
+    if (now >= endMs) return "Completed";
+    return "Running";
+  }
+  
+  function updateViewerStatusBanner(){
+    const s = S();
+    const isViewer = !canWrite();
+    const banner = document.getElementById("rt-status-banner");
+    const topTxt = document.getElementById("rt-status-top");
+    const panelTxt = document.getElementById("rt-status");
+    const text = statusString(s);
+    if (panelTxt) panelTxt.textContent = text;
+    if (banner) {
+      banner.style.display = isViewer ? "block" : "none";
+      if (topTxt) topTxt.textContent = text;
+    }
+  }
+  
+  function computePercent(){
+    const s = S();
+    if (!s.downtimeStarted || !s.downtimeStartTime) return 0;
+    const start = (s.downtimeStartTime instanceof Date) ? s.downtimeStartTime : new Date(s.downtimeStartTime);
+    const durMs = (typeof s.downtimeDuration === "number" ? s.downtimeDuration : 24) * 3600 * 1000;
+    let pct = (Date.now() - start.getTime()) / durMs;
+    pct = Math.max(0, Math.min(1, pct));
+    return pct;
+  }
+  
+  function updateViewerProgress(){
+    const s = S();
+    const startEl = document.getElementById("rt-start");
+    const etaEl = document.getElementById("rt-eta");
+    const bar = document.getElementById("rt-bar");
+    const lbl = document.getElementById("rt-bar-label");
+    const pct = computePercent();
+    
+    if (!s.downtimeStarted || !s.downtimeStartTime) {
+      if (startEl) startEl.textContent = "—";
+      if (etaEl) etaEl.textContent = "—";
+      if (bar) bar.style.width = "0%";
+      if (lbl) lbl.textContent = "0%";
+      return;
+    }
+    
+    const start = (s.downtimeStartTime instanceof Date) ? s.downtimeStartTime : new Date(s.downtimeStartTime);
+    const durMs = (typeof s.downtimeDuration === "number" ? s.downtimeDuration : 24) * 3600 * 1000;
+    const end = new Date(start.getTime() + durMs);
+    
+    if (startEl) startEl.textContent = start.toLocaleString();
+    if (etaEl) etaEl.textContent = end.toLocaleString();
+    
+    const pctStr = Math.round(pct * 100) + "%";
+    if (bar) bar.style.width = pctStr;
+    if (lbl) lbl.textContent = pctStr;
+  }
+  
+  function updateViewerTimelineVisual(){
+    const s = S();
+    
+    // Update timeline if function exists
+    if (typeof window.updateTimeline === "function") { 
+      try { window.updateTimeline(); } catch {}
+    }
+    
+    // Update current time line position for viewer mode - synced with host
+    if (s.downtimeStarted && s.downtimeStartTime) {
+      const now = new Date();
+      const start = (s.downtimeStartTime instanceof Date) ? s.downtimeStartTime : new Date(s.downtimeStartTime);
+      const elapsedMs = now - start - (s.pausedDuration || 0);
+      const elapsed = elapsedMs / 3600000; // hours
+      const pixelsPerHour = 60;
+      const linePosition = Math.min(elapsed * pixelsPerHour, (s.downtimeDuration || 24) * pixelsPerHour);
+      
+      const currentLine = document.getElementById('currentTimeLine');
+      if (currentLine) {
+        currentLine.style.left = `${linePosition}px`;
+        currentLine.style.display = s.downtimeStarted ? 'block' : 'none';
+        
+        // Update label
+        const totalSeconds = Math.floor(elapsedMs / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        
+        const label = document.getElementById('currentTimeLabel');
+        if (label) label.textContent = timeStr;
+      }
+    }
+  }
+
+  function applyRemoteState(st){
+    const s = S();
+    Object.assign(s, {
+      runbooks: Array.isArray(st.runbooks) ? st.runbooks : [],
+      downtimeStarted: !!st.downtimeStarted,
+      downtimeDuration: typeof st.downtimeDuration === "number" ? st.downtimeDuration : 24,
+      downtimePaused: !!st.downtimePaused,
+      pausedDuration: typeof st.pausedDuration === "number" ? st.pausedDuration : 0,
+      downtimeStartTime: st.downtimeStartTime ? new Date(st.downtimeStartTime) : null,
+      completionTimes: st.completionTimes || {}
+    });
+
+    const cn = document.getElementById("customerName");
+    const tp = document.getElementById("transformCycle");
+    if (cn && typeof st.customerName === "string" && cn.value !== st.customerName) cn.value = st.customerName;
+    if (tp && typeof st.transformCycle === "string" && tp.value !== st.transformCycle) tp.value = st.transformCycle;
+
+    lockFieldsForStarted(!!st.downtimeStarted);
+
+    try {
+      if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
+      if (typeof window.updateClock === "function") window.updateClock();
+    } catch {}
+
+    updateViewerStatusBanner();
+    updateViewerProgress();
+    updateViewerTimelineVisual();
+  }
+
+  // Mode
+  let initialApplied=false, lastSent=null, writing=false, remoteController=null, controllerAttempted=false;
+  
+  window.canWrite = function(){ 
+    return !viewerForced && remoteController === uid; 
+  }
+  
+  function setReadOnlyUI(ro){
+    const modeEl = document.getElementById("rt-mode");
+    if (modeEl) modeEl.textContent = ro ? "mode: VIEWER" : "mode: HOST";
+    
+    // Apply viewer mode class to body for CSS styling
+    if (ro) {
+      document.body.classList.add('viewer-mode');
+    } else {
+      document.body.classList.remove('viewer-mode');
+    }
+    
+    const nodes = document.querySelectorAll("button, input, select, textarea");
+    nodes.forEach(el => { 
+      if (!el) return; 
+      if (el.id === "rt-copy" || el.id === "rt-reset") return;
+      if (ro) { 
+        el.setAttribute("disabled","true"); 
+        el.style.pointerEvents="none"; 
+        el.style.opacity="0.7"; 
+      }
+      else { 
+        el.removeAttribute("disabled"); 
+        el.style.pointerEvents=""; 
+        el.style.opacity=""; 
+      } 
+    });
+    
+    lockFieldsForStarted(!!S().downtimeStarted);
+    
+    const panel = document.getElementById("rt-viewer-panel");
+    if (panel) panel.style.display = ro ? "block" : "none";
+    
+    const statusBanner = document.getElementById("rt-status-banner");
+    if (statusBanner) statusBanner.style.display = ro ? "block" : "none";
+    
+    updateViewerStatusBanner();
+    updateViewerProgress();
+    updateViewerTimelineVisual();
+  }
+
+  // Ensure doc exists
+  try {
+    const s = await getDoc(sessionRef);
+    if (!s.exists()) {
+      await setDoc(sessionRef, { 
+        state: serialize(), 
+        updatedAt: serverTimestamp() 
+      }, { merge:true });
+    }
+  } catch(e){ 
+    console.error("[session] ensure failed:", e); 
+  }
+
+  // Subscribe to session
+  onSnapshot(sessionRef, async (snap) => {
+    const data = snap.data() || {};
+    remoteController = data.controllerUid || null;
+    
+    if (data.state) applyRemoteState(data.state);
+
+    if (!remoteController && !controllerAttempted && !viewerForced) {
+      controllerAttempted = true;
+      try { 
+        await setDoc(sessionRef, { 
+          controllerUid: uid, 
+          controllerSetAt: serverTimestamp() 
+        }, { merge:true }); 
+      } catch {}
+    }
+
+    setReadOnlyUI(!window.canWrite());
+
+    if (!initialApplied) {
+      initialApplied = true;
+      try { lastSent = JSON.stringify(serialize()); } catch {}
+    }
+  });
+
+  // Push (host only)
+  async function push(reason="debounce"){
+    if (!initialApplied || !window.canWrite()) return;
+    try{
+      const nowJson = JSON.stringify(serialize());
+      if (nowJson === lastSent || writing) return;
+      writing = true;
+      await updateDoc(sessionRef, { 
+        state: JSON.parse(nowJson), 
+        updatedAt: serverTimestamp(), 
+        reason 
+      });
+      lastSent = nowJson;
+    }catch(e){
+      try{ 
+        await setDoc(sessionRef, { 
+          state: serialize(), 
+          updatedAt: serverTimestamp(), 
+          reason 
+        }, { merge:true });
+        lastSent = JSON.stringify(serialize()); 
+      }catch(e2){ 
+        console.error("[session] write failed:", e2); 
+      }
+    }finally{ 
+      writing=false; 
+    }
+  }
+  
+  let timer=null;
+  const schedule = () => { 
+    clearTimeout(timer); 
+    timer = setTimeout(()=>push("debounce"), 250); 
+  };
+
+  // Hook mutators
+  ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook",
+   "clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility",
+   "updateCritical","updateScheduleTime","updateDurationTime","toggleCompleted","calculateEndTime"]
+    .forEach(fn => { 
+      const orig = window[fn]; 
+      if (typeof orig==="function"){ 
+        window[fn]=function(...a){ 
+          const r=orig.apply(this,a); 
+          schedule(); 
+          return r; 
+        }; 
+      } 
+    });
+
+  // Watch URL-related fields (host)
+  const watch = (id, paramName) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("change", () => {
+      schedule();
+      if (window.canWrite()) {
+        const v = el.value || "";
+        if (paramName === "customer") url.searchParams.set("customer", v || "default");
+        if (paramName === "phase") url.searchParams.set("phase", v);
+        history.replaceState(null, "", url.toString());
+      }
+    }, true);
+    el.addEventListener("input", () => { 
+      if (window.canWrite()) schedule(); 
+    }, true);
+  };
+  
+  watch("customerName", "customer");
+  watch("transformCycle", "phase");
+
+  // Periodic viewer refresh ticks - sync timeline position in real-time
+  setInterval(() => {
+    if (!window.canWrite()) {
+      updateViewerStatusBanner();
+      updateViewerProgress();
+      updateViewerTimelineVisual();
+      if (typeof window.updateClock === "function") { 
+        try { window.updateClock(); } catch {} 
+      }
+      
+      // Update progress indicators for viewer to match host
+      if (typeof window.updateProgressIndicators === "function") {
+        try { window.updateProgressIndicators(); } catch {}
+      }
+    }
+  }, 1000);
+
+  // Reset (HOST-only)
+  async function handleReset(){
+    if (!window.canWrite()) { 
+      alert("Only the host can reset the session."); 
+      return; 
+    }
+    const yes = confirm("Reset the session for ALL viewers? This will clear customer, phase, runbooks and all timing.");
+    if (!yes) return;
+
+    const cn = document.getElementById('customerName'); 
+    if (cn) cn.value = "";
+    const tp = document.getElementById('transformCycle'); 
+    if (tp) tp.value = "";
+
+    const defaultState = {
+      runbooks: [],
+      downtimeStarted: false,
+      downtimeStartTime: null,
+      downtimeDuration: 24,
+      downtimePaused: false,
+      pausedDuration: 0,
+      completionTimes: {},
+      customerName: "",
+      transformCycle: ""
+    };
+    
+    try {
+      await updateDoc(sessionRef, { 
+        state: defaultState, 
+        updatedAt: serverTimestamp(), 
+        reason: "reset" 
+      });
+    } catch (e) {
+      await setDoc(sessionRef, { 
+        state: defaultState, 
+        updatedAt: serverTimestamp(), 
+        reason: "reset" 
+      }, { merge: true });
+    }
+
+    lockFieldsForStarted(false);
+
+    try {
+      url.searchParams.delete('phase');
+      url.searchParams.delete('transformCycle');
+      url.searchParams.set('customer','default');
+      history.replaceState(null, "", url.toString());
+    } catch {}
+
+    window.location.reload();
+  }
+  
+  document.getElementById("rt-reset").onclick = handleReset;
