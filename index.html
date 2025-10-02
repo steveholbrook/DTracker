@@ -6,8 +6,10 @@
 <title>Technical Downtime Tracking App</title>
   <!-- PWA manifest and theme color -->
   <link rel="manifest" href="manifest.webmanifest">
-  <!-- Theme color influences the browser address bar and OS chrome when the app is installed -->
   <meta name="theme-color" content="#0a6ed1">
+  <!-- jsPDF and html2canvas for PDF generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   :root{
     --sap-shell-bg:#f7f7f7;
@@ -132,8 +134,8 @@
   }
   
   input[type="text"],
-  input[type="number"],
   input[type="time"],
+  input[type="number"],
   select{
     padding:9px 12px;
     border:1px solid var(--sap-border);
@@ -145,8 +147,8 @@
   }
   
   input[type="text"]:focus,
-  input[type="number"]:focus,
   input[type="time"]:focus,
+  input[type="number"]:focus,
   select:focus{
     outline:none;
     border-color:var(--sap-accent);
@@ -172,6 +174,24 @@
     border-radius:6px;
     min-width:100px;
     text-align:center;
+  }
+  
+  .time-input{
+    font-family:'Courier New', monospace;
+    font-size:15px;
+    font-weight:600;
+    color:var(--sap-accent-2);
+    padding:8px 12px;
+    background:#fff;
+    border:1px solid #cce0f5;
+    border-radius:6px;
+    min-width:100px;
+    text-align:center;
+  }
+  
+  .time-input:focus{
+    border-color:var(--sap-accent);
+    box-shadow:0 0 0 2px rgba(10,110,209,0.1);
   }
   
   .table{
@@ -294,6 +314,8 @@
     margin-top:16px;
     overflow-x:auto;
     position:relative;
+    display:flex;
+    width:100%;
   }
   
   .timeline-header{
@@ -321,17 +343,55 @@
     color:var(--sap-muted);
   }
   
-  /*
-    Condense each timeline row to a much smaller height so that many
-    runblocks (up to ~33) can be displayed within a single browser
-    viewport.  A smaller row height also demands slimmer timeline
-    blocks and reduced typography.  See matching adjustments for
-    timeline-track, timeline-block and timeline-label below.
-  */
+  .timeline-scroll{
+    flex:1 1 auto;
+    overflow-x:auto;
+    overflow-y:hidden;
+    position:relative;
+  }
+  
+  .timeline-right{
+    flex:0 0 270px;
+    display:flex;
+    flex-direction:column;
+    border-left:2px solid var(--sap-border);
+  }
+  
+  .timeline-right-header{
+    display:grid;
+    grid-template-columns:70px 70px 60px 70px;
+    align-items:center;
+    height:24px;
+    background:linear-gradient(180deg, #f8fafb 0%, #f2f5f7 100%);
+    border-bottom:1px solid var(--sap-border);
+  }
+  
+  .timeline-right-header .header-cell{
+    font-weight:600;
+    font-size:10px;
+    text-transform:uppercase;
+    color:var(--sap-muted);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-right:1px solid #e5e5e5;
+    padding:0;
+    height:100%;
+  }
+  
+  .timeline-right-header .header-cell:last-child{
+    border-right:none;
+  }
+  
+  #timelineControlsRows{
+    display:flex;
+    flex-direction:column;
+  }
+  
   .timeline-row{
     display:flex;
     align-items:center;
-    height:20px;
+    height:24px;
     border-bottom:1px solid #e5e5e5;
     position:relative;
     transition:background 0.2s;
@@ -345,15 +405,9 @@
     border-bottom:none;
   }
   
-  /*
-    Each row contains a track area onto which blocks are positioned.
-    The track height matches the row height (20px) so that blocks
-    align properly.  The repeating linear gradient draws hourly
-    separators every 60px.
-  */
   .timeline-track{
     flex:0 0 auto;
-    height:20px;
+    height:24px;
     position:relative;
     background-image:repeating-linear-gradient(
       90deg,
@@ -366,122 +420,88 @@
     border-right:2px solid var(--sap-border);
   }
   
-  /*
-    Shrink the label column so more rows fit horizontally within the
-    viewport.  A fixed width of 120px (or adjust as needed) still
-    allows sequence and phase text to be readable.  Reduce padding
-    and font size correspondingly.
-  */
-  .timeline-label{
-    width:120px;
-    padding:4px 8px;
-    font-size:11px;
-    border-right:1px solid #e5e5e5;
+  .timeline-control-row{
+    display:grid;
+    grid-template-columns:70px 70px 60px 70px;
+    height:24px;
+    border-bottom:1px solid #e5e5e5;
+  }
+  
+  .timeline-control-cell{
     display:flex;
     align-items:center;
-    gap:4px;
-  }
-  
-  .timeline-label-sequence{
-    font-weight:700;
-    color:var(--sap-accent);
-    font-size:11px;
-  }
-  
-  .timeline-label-phase{
-    font-size:11px;
+    justify-content:center;
+    font-size:12px;
     color:var(--sap-text);
-    font-weight:500;
-  }
-  
-  .timeline-controls{
-    display:flex;
-    gap:0;
-    align-items:center;
-  }
-  
-  .control-field{
-    display:flex;
-    flex-direction:column;
-    gap:3px;
-    padding:8px 12px;
-    border-right:1px solid #e5e5e5;
     background:linear-gradient(180deg, #fafbfc 0%, #f8f9fa 100%);
-    transition:background 0.2s;
-    align-items:center;
-    width:90px;
+    border-right:1px solid #e5e5e5;
   }
   
-  .control-field:hover{
-    background:linear-gradient(180deg, #f8f9fa 0%, #f5f6f7 100%);
+  .timeline-control-row .timeline-control-cell:last-child{
+    border-right:none;
   }
   
-  .control-field label{
-    font-size:10px;
-    color:var(--sap-muted);
-    text-transform:uppercase;
-    font-weight:600;
-  }
-  
-  .control-field input{
-    padding:5px 8px;
-    font-size:13px;
+  .timeline-control-cell input[type="text"]{
+    width:90%;
+    text-align:center;
     border:1px solid #d5d5d5;
     border-radius:3px;
-    background:#fff;
-    transition:all 0.2s;
+    font-size:11px;
+    padding:2px 3px;
   }
   
-  .control-field input:focus{
+  .timeline-control-cell input[type="text"]:focus{
     border-color:var(--sap-accent);
     box-shadow:0 0 0 2px rgba(10,110,209,0.1);
   }
   
-  .control-field input[type="text"]{
-    width:70px;
-    text-align:center;
-  }
-  
-  .control-field-complete{
-    width:80px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    background:linear-gradient(180deg, #fafbfc 0%, #f8f9fa 100%);
-    padding:8px 12px;
-    border-right:none;
-  }
-  
-  .timeline-checkbox{
+  .timeline-control-cell input[type="checkbox"]{
     cursor:pointer;
-    width:18px;
-    height:18px;
+    width:16px;
+    height:16px;
     accent-color:var(--sap-success);
   }
   
-  .timeline-checkbox:hover{
-    transform:scale(1.1);
+  .timeline-scale{
+    height:24px;
+    position:relative;
+    background:linear-gradient(180deg, #f8fafb 0%, #f2f5f7 100%);
+    border-bottom:1px solid var(--sap-border);
+    border-right:2px solid var(--sap-border);
+    flex:0 0 auto;
+  }
+  
+  .timeline-hour{
+    position:absolute;
+    font-size:10px;
+    color:var(--sap-muted);
+    top:5px;
+    font-weight:600;
+  }
+  
+  .timeline-hour:hover{
+    color:var(--sap-accent);
   }
   
   .timeline-block{
     position:absolute;
-    /* Shorter height to fit condensed rows */
-    height:12px;
-    /* Center vertically within a 20px row:  (20px - 12px) / 2 = 4px */
-    top:4px;
+    height:14px;
+    top:5px;
     border-radius:3px;
     cursor:move;
     display:flex;
     align-items:center;
     justify-content:center;
-    /* Remove extra horizontal padding to maximise label space */
-    padding:0;
+    padding:0 4px;
     color:#fff;
-    font-size:11px;
+    font-size:10px;
     font-weight:600;
     transition:opacity 0.2s;
     box-shadow:0 1px 2px rgba(0,0,0,0.2);
     user-select:none;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
   }
   
   .timeline-block:hover{
@@ -506,30 +526,68 @@
     filter: grayscale(100%);
   }
   
-  /*
-    Condense the timeline scale bar to reduce vertical space.  A height
-    of 20px maintains legibility of hour markers while aligning with
-    the condensed rows below.  The bottom border uses the neutral
-    border colour to avoid drawing a blue line across the top of the
-    timeline.
-  */
-  .timeline-scale{
-    height:20px;
-    position:relative;
-    background:linear-gradient(180deg, #f8fafb 0%, #f2f5f7 100%);
-    border-bottom:1px solid var(--sap-border);
-    border-right:2px solid var(--sap-border);
-    flex:0 0 auto;
+  /* Block label outside */
+  .block-label{
+    position:absolute;
+    left:100%;
+    margin-left:6px;
+    white-space:nowrap;
+    color:var(--sap-text);
+    font-size:11px;
+    font-weight:500;
+    top:50%;
+    transform:translateY(-50%);
+    pointer-events:none;
   }
-
-  /*
-    A vertical finish line at the end of the timeline window.  Its
-    position is dynamically set via JavaScript based on the downtime
-    duration.  The line spans the entire height of the scrollable
-    timeline area and features a small checkered flag at the top to
-    indicate completion.  The z-index places it above row content
-    while remaining beneath the current time indicator.
-  */
+  
+  .quality-diamond + .block-label{
+    left:auto;
+    right:100%;
+    margin-right:6px;
+    margin-left:0;
+  }
+  
+  /* Critical path indicators */
+  .timeline-block.critical {
+    box-shadow: 0 0 8px rgba(255, 0, 0, 0.6), 0 2px 4px rgba(0,0,0,0.3);
+    animation: pulse 2s infinite;
+  }
+  
+  @keyframes pulse {
+    0% { box-shadow: 0 0 8px rgba(255, 0, 0, 0.6), 0 2px 4px rgba(0,0,0,0.3); }
+    50% { box-shadow: 0 0 16px rgba(255, 0, 0, 0.8), 0 2px 4px rgba(0,0,0,0.3); }
+    100% { box-shadow: 0 0 8px rgba(255, 0, 0, 0.6), 0 2px 4px rgba(0,0,0,0.3); }
+  }
+  
+  .critical-indicator {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 14px;
+    height: 14px;
+    background: #ff0000;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 9px;
+    font-weight: bold;
+    z-index: 100;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  }
+  
+  .table .critical-cell {
+    text-align: center;
+  }
+  
+  .critical-checkbox {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--sap-error);
+  }
+  
   .finish-line {
     position:absolute;
     top:0;
@@ -538,6 +596,7 @@
     background:var(--sap-error);
     z-index:10;
   }
+  
   .finish-line::before{
     content:'';
     position:absolute;
@@ -545,7 +604,6 @@
     left:-4px;
     width:12px;
     height:8px;
-    /* Checkered pattern for the finish flag */
     background-image:
       linear-gradient(45deg, #000 25%, transparent 25%),
       linear-gradient(-45deg, #000 25%, transparent 25%),
@@ -555,27 +613,13 @@
     background-position:0 0,0 2px,2px -2px,-2px 0;
   }
   
-  .timeline-hour{
-    position:absolute;
-    font-size:10px;
-    color:var(--sap-muted);
-    /* Center the hour labels vertically within a 20px tall scale */
-    top:4px;
-    font-weight:600;
-  }
-  
-  .timeline-hour:hover{
-    color:var(--sap-accent);
-  }
-  
   .current-time-line{
     position:absolute;
-    /* Position the current-time indicator immediately below the 20px scale */
-    top:20px;
+    top:0;
     bottom:0;
     width:2px;
-    background:var(--sap-error);
-    z-index:15;
+    background:red;
+    z-index:9999;
     pointer-events:none;
   }
   
@@ -594,34 +638,31 @@
   }
   
   /* Block Colors */
+  .block-preparation{background:#795548;}
   .block-export{background:#4CAF50;}
   .block-import{background:#2196F3;}
-  /*
-    Quality Gate uses the strategy label "Quality Gate" which becomes the
-    class `.block-qualitygate` when whitespace is removed.  Define both
-    `.block-quality` (legacy) and `.block-qualitygate` so that timeline
-    blocks for Quality Gate appear consistently in orange.
-  */
   .block-quality{background:#FF9800;}
   .block-qualitygate{background:#FF9800;}
   .block-conversion{background:#9C27B0;}
   .block-validation{background:#00BCD4;}
-
-  /*
-    Style the runblock name label that is associated with each timeline block.
-    The label appears to the left of the block (outside of it) so users can
-    easily see the runblock identifier without overlapping the block’s main
-    content.  We use absolute positioning relative to the timeline block to
-    achieve this: the label’s right edge aligns with the block’s left edge.
-    A smaller font size and muted colour distinguish the runblock name from
-    the primary sequence/phase label.
-  */
-  /* Base styling for runblock names (when displayed outside the block) */
+  
   .runblock-name{
     font-size:10px;
     color:var(--sap-muted);
     white-space:nowrap;
     pointer-events:none;
+  }
+  
+  .quality-diamond{
+    position:absolute;
+    width:14px;
+    height:14px;
+    background:#FF9800;
+    transform:rotate(45deg);
+    top:50%;
+    margin-top:-7px;
+    border-radius:2px;
+    box-shadow:0 1px 2px rgba(0,0,0,0.2);
   }
   
   .legend{
@@ -631,6 +672,8 @@
     padding-top:12px;
     border-top:1px solid var(--sap-border);
     font-size:12px;
+    flex-wrap:wrap;
+    align-items:center;
   }
   
   .legend-item{
@@ -654,189 +697,75 @@
     font-size:12px;
     color:var(--sap-accent-2);
   }
-
-  /* Layout adjustments to position start/duration/complete controls on the far right */
-  .timeline-container{
-    display:flex;
-    width:100%;
-    overflow-x:hidden;
-  }
-  .timeline-scroll{
-    flex:1 1 auto;
-    overflow-x:auto;
-    overflow-y:hidden;
-    position:relative;
-    /* Ensure the scrollable area and the fixed area align vertically */
-  }
-  .timeline-right{
-    flex:0 0 200px;
-    display:flex;
-    flex-direction:column;
-    border-left:2px solid var(--sap-border);
-  }
-  /*
-    Use CSS Grid for the right-hand header and control rows so the
-    columns align perfectly.  The three columns correspond to
-    start (70px), duration (70px) and complete (60px).  Remove
-    default paddings to ensure text is centered within the 20px
-    height.
-  */
-  .timeline-right-header{
-    display:grid;
-    grid-template-columns:70px 70px 60px;
-    align-items:center;
-    height:20px;
-    background:linear-gradient(180deg, #f8fafb 0%, #f2f5f7 100%);
-    border-bottom:1px solid var(--sap-border);
-  }
-  .timeline-right-header .header-cell{
-    font-weight:600;
-    font-size:10px;
-    text-transform:uppercase;
-    color:var(--sap-muted);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    border-right:1px solid #e5e5e5;
-    /* Remove any padding inherited from generic header cell styles */
-    padding:0;
-    height:100%;
-  }
-  /* Remove border on last header cell */
-  .timeline-right-header .header-cell:last-child{
-    border-right:none;
-  }
-
-  /* Container for control rows */
-  #timelineControlsRows{
-    display:flex;
-    flex-direction:column;
-  }
-  .timeline-control-row{
-    display:grid;
-    grid-template-columns:70px 70px 60px;
-    height:20px;
-    border-bottom:1px solid #e5e5e5;
-  }
-  .timeline-control-cell{
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size:12px;
-    color:var(--sap-text);
-    background:linear-gradient(180deg, #fafbfc 0%, #f8f9fa 100%);
-    border-right:1px solid #e5e5e5;
-  }
-  /* Remove border on last cell of each control row */
-  .timeline-control-row .timeline-control-cell:last-child{
-    border-right:none;
-  }
-  /* Input styling inside control cells */
-  .timeline-control-cell input[type="text"]{
-    width:100%;
-    text-align:center;
-    border:1px solid #d5d5d5;
-    border-radius:3px;
-    font-size:12px;
-    padding:3px 4px;
-  }
-  .timeline-control-cell input[type="text"]:focus{
-    border-color:var(--sap-accent);
-    box-shadow:0 0 0 2px rgba(10,110,209,0.1);
-  }
-  .timeline-control-cell input[type="checkbox"]{
-    cursor:pointer;
-    width:16px;
-    height:16px;
-    accent-color:var(--sap-success);
-  }
-
-  .hidden{
-    display:none;
-  }
   
-  .timeline-table-header{
-    display:flex;
-    align-items:center;
-    height:30px;
-    background:#f8fafb;
-    border-bottom:2px solid var(--sap-accent);
-  }
-  
-  .header-cell{
-    padding:8px 12px;
-    font-size:10px;
-    font-weight:600;
-    text-transform:uppercase;
-    color:var(--sap-muted);
-    border-right:1px solid #e5e5e5;
-  }
-
-  /* Success/green button for Report */
   .btn.success{
     background:var(--sap-success);
     color:#fff;
     border-color:#0b6d34;
   }
+  
   .btn.success:hover{
     background:#0b6d34;
   }
-
-  /* Orange diamond marker for Quality Gates */
-  .quality-diamond{
-    position:absolute;
-    width:14px;
-    height:14px;
-    background:#FF9800; /* match Quality Gate colour */
-    transform:rotate(45deg);
-    top:50%;
-    margin-top:-7px; /* center vertically in 20px row */
-    border-radius:2px;
-    box-shadow:0 1px 2px rgba(0,0,0,0.2);
+  
+  .hidden{
+    display:none;
   }
-
-  /* Row holding legend (key) and Report button */
-  .legend-row{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:12px;
-    margin-top:12px;
-    padding-top:12px;
-    border-top:1px solid var(--sap-border);
+  
+  /* Validation warnings */
+  .validation-warning {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 4px;
+    padding: 8px;
+    margin: 8px 0;
+    font-size: 12px;
+    color: #856404;
   }
-  .legend-row .legend{
-    margin:0;
-    padding:0;
-    border-top:none;
+  
+  .conflict-indicator {
+    background: #ff6b6b;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: bold;
+    margin-left: 4px;
   }
-
-  /* Print styles: show only the progress panel for the report */
+  
   @media print{
     body *{ visibility:hidden !important; }
     #progressPanel, #progressPanel *{ visibility:visible !important; }
     #progressPanel{ position:relative; }
-    /* Hide the Report button itself in the printout */
     #progressPanel #reportBtn{ display:none !important; }
     .timeline-container{ overflow:visible !important; }
   }
-
-
-  .block-preparation{ background:#795548; }
+  
+  /* Ensure viewer mode readonly styling */
+  .viewer-mode input,
+  .viewer-mode select,
+  .viewer-mode textarea,
+  .viewer-mode button {
+    pointer-events: none !important;
+    opacity: 0.7 !important;
+  }
+  
+  .viewer-mode .timeline-checkbox {
+    pointer-events: none !important;
+  }
+  
+  .viewer-mode #rt-copy,
+  .viewer-mode #rt-reset {
+    pointer-events: auto !important;
+    opacity: 1 !important;
+  }
 </style>
 
-  <!--
-    Microsoft Teams JavaScript SDK v2: Include this script to enable
-    integration as a Teams tab.  Calling microsoftTeams.app.initialize()
-    allows the page to run inside the Teams client and ensures that
-    links opened via microsoftTeams.app.openLink stay within Teams.
-    See: https://learn.microsoft.com/en-us/javascript/api/@microsoft/teams-js/app?view=msteams-client-js-latest#@microsoft-teams-js-app-openlink
-  -->
-  <script
-    src="https://res.cdn.office.net/teams-js/2.0.0/js/MicrosoftTeams.min.js"
-    integrity="sha384-QtTBFeFlfRDZBfwHJHYQp7MdLJ2C3sfAEB1Qpy+YblvjavBye+q87TELpTnvlXw4"
-    crossorigin="anonymous">
-  </script>
+<script
+  src="https://res.cdn.office.net/teams-js/2.0.0/js/MicrosoftTeams.min.js"
+  integrity="sha384-QtTBFeFlfRDZBfwHJHYQp7MdLJ2C3sfAEB1Qpy+YblvjavBye+q87TELpTnvlXw4"
+  crossorigin="anonymous">
+</script>
 </head>
 <body>
   <div class="app-header">
@@ -863,23 +792,16 @@
     <!-- Customer Information -->
     <div class="panel" style="margin-bottom:16px;padding:16px;">
       <div class="field-row">
-        <!-- Customer name field -->
         <div class="field" style="flex:1;">
           <label>Customer Name *</label>
           <input type="text" id="customerName" placeholder="Enter customer name" value="ACME Corporation">
         </div>
-        <!-- Transform cycle selector as requested.  This allows users to
-             choose the type of transform being executed.  The options
-             provided match the user’s specification: Test Migration,
-             Go Live Simulation and Go‑Live.  We assign an id so the
-             selection can be referenced in scripts if needed in the
-             future. -->
         <div class="field" style="flex:1;">
           <label>Transform Cycle</label>
           <select id="transformCycle">
             <option value="Test Migration">Test Migration</option>
             <option value="Go Live Simulation">Go Live Simulation</option>
-            <option value="Go-Live">Go‑Live</option>
+            <option value="Go-Live">Go-Live</option>
           </select>
         </div>
       </div>
@@ -892,16 +814,22 @@
       <div class="timeline-header">
         <div class="timeline-info">
           <div class="timeline-field">
-            <label>Technical Downtime Duration</label>
-            <input type="number" id="downtimeDuration" min="1" max="168" value="24" onchange="updateTimeline()" style="width:80px;">
+            <label>Technical Downtime Duration (hrs)</label>
+            <input type="number" id="downtimeDuration" min="1" max="168" value="24" onchange="updateTimeline();calculateEndTime()" style="width:80px;">
           </div>
           <div class="timeline-field">
             <label>Start Time</label>
-            <div class="time-display" id="startTimeDisplay">--:--:--</div>
+            <div id="startTimeContainer">
+              <input type="time" id="startTimeInput" class="time-input" onchange="calculateEndTime()" style="display:none;">
+              <div class="time-display" id="startTimeDisplay">--:--:--</div>
+            </div>
           </div>
           <div class="timeline-field">
             <label>Current Duration</label>
-            <div class="time-display" id="currentDurationDisplay">00:00:00</div>
+            <div id="currentDurationContainer">
+              <input type="text" id="currentDurationInput" class="time-input" placeholder="HH:MM:SS" pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}" style="display:none;">
+              <div class="time-display" id="currentDurationDisplay">00:00:00</div>
+            </div>
           </div>
           <div class="timeline-field">
             <label>Estimated End Time</label>
@@ -913,8 +841,9 @@
         </div>
       </div>
 
+      <div id="validationMessages"></div>
+
       <div class="timeline-container">
-        <!-- Left scrollable area for timeline scale and blocks -->
         <div class="timeline-scroll">
           <div class="timeline-table-header">
             <div class="timeline-scale" id="timelineScale">
@@ -924,21 +853,17 @@
           <div id="timelineRows">
             <!-- Timeline track rows will be generated here -->
           </div>
-          <!-- Finish line indicator will be positioned at the end of the downtime window -->
           <div id="finishLine" class="finish-line"></div>
-          <!-- Current time indicator -->
           <div class="current-time-line" id="currentTimeLine" style="display:none;">
             <div class="current-time-label" id="currentTimeLabel">00:00:00</div>
           </div>
         </div>
-        <!-- Right fixed area for start/duration/complete headers and controls -->
         <div class="timeline-right">
           <div class="timeline-right-header">
-            <!-- Align header text directly above its respective input column -->
-            <div class="header-cell start-header">START</div>
-            <div class="header-cell duration-header">DURATION</div>
-            <!-- The complete header cell intentionally omits the legacy 'control-field-complete' class to prevent conflicting styles -->
-            <div class="header-cell complete-header">COMPLETE</div>
+            <div class="header-cell">START</div>
+            <div class="header-cell">PLAN</div>
+            <div class="header-cell">END</div>
+            <div class="header-cell">ACTUAL</div>
           </div>
           <div id="timelineControlsRows">
             <!-- Timeline control rows will be generated here -->
@@ -947,6 +872,10 @@
       </div>
       
       <div class="legend">
+        <div class="legend-item">
+          <div class="legend-color block-preparation"></div>
+          <span>Preparation</span>
+        </div>
         <div class="legend-item">
           <div class="legend-color block-export"></div>
           <span>Export</span>
@@ -967,12 +896,12 @@
           <div class="legend-color block-validation"></div>
           <span>Validation</span>
         </div>
-        <div class="legend-item">
-          <div class="legend-color block-preparation"></div>
-          <span>Preparation</span>
+        <div class="legend-item" style="margin-left:auto;">
+          <div style="width:16px;height:16px;background:#ff0000;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:10px;font-weight:bold;">!</div>
+          <span>Critical Path</span>
         </div>
       
-        <button class="btn success" id="reportBtn" data-role="model" class="model-btn">Report</button>
+        <button class="btn success" id="reportBtn" onclick="generatePDFReport()" style="margin-left:16px">📄 PDF Report</button>
       </div>
     </div>
 
@@ -984,13 +913,12 @@
       <table class="table" id="runbookTable">
         <thead>
           <tr>
-            <th style="width:80px;">Sequence</th>
-            <th style="width:130px;">Strategy</th>
-            <th style="width:130px;">Phase</th>
-            <!-- Runblock name shortened to make room for responsibility column -->
+            <th style="width:60px;">Sequence</th>
+            <th style="width:120px;">Strategy</th>
+            <th style="width:120px;">Phase</th>
             <th style="width:160px;">Runblock</th>
-            <!-- New responsibility column as per requirements -->
-            <th style="width:220px;">Responsibility</th>
+            <th style="width:180px;">Responsibility</th>
+            <th style="width:60px;text-align:center;">Critical</th>
             <th style="width:80px;text-align:center;">Actions</th>
           </tr>
         </thead>
@@ -1004,8 +932,8 @@
         <button class="btn" onclick="clearRunbook()">Clear All</button>
         <div style="margin-left:auto;">
           <input type="file" id="uploadFile" accept=".csv" class="hidden" onchange="uploadExcel(event)">
-          <button class="btn" onclick="downloadExcel()">📥 Download</button>
-          <button class="btn" onclick="document.getElementById('uploadFile').click()">📤 Upload</button>
+          <button class="btn" onclick="downloadExcel()">📥 Download CSV</button>
+          <button class="btn" onclick="document.getElementById('uploadFile').click()">📤 Upload CSV</button>
         </div>
       </div>
       
@@ -1013,19 +941,17 @@
         <strong>Instructions:</strong><br>
         • Enter sequences 1-30 to define execution order<br>
         • Select strategy and phase for each runblock<br>
-        • Enter runblock name for identification<br>
+        • Enter runblock name for identification (required for timeline display)<br>
+        • Mark critical path items with the Critical checkbox<br>
         • Schedule time shows hours:minutes after downtime start<br>
-        • Duration controls the length of each runblock in the timeline
+        • PLAN controls the planned duration of each runblock<br>
+        • ACTUAL is automatically populated when END is checked
       </div>
     </div>
   </div>
 
 <script>
-// Initialize Microsoft Teams if running inside Teams.  When hosted on a custom
-// domain (like SharePoint), provide the domain in the validMessageOrigins
-// array to allow cross‑frame messaging.  This ensures the app loads inside
-// Teams instead of a new browser tab and allows us to open external links
-// within the Teams client via app.openLink.
+// Initialize Microsoft Teams if running inside Teams
 if (typeof microsoftTeams !== 'undefined' && microsoftTeams.app && typeof microsoftTeams.app.initialize === 'function') {
   const validOrigins = ['https://snpcom.sharepoint.com'];
   microsoftTeams.app.initialize(validOrigins).catch(() => {
@@ -1043,53 +969,22 @@ const AppState = {
   pausedDuration: 0,
   pauseStartTime: null,
   currentDraggedBlock: null,
-  dragOffset: 0
+  dragOffset: 0,
+  completionTimes: {}  // Store actual completion times
 };
 
 // Strategy and Phase options
-const STRATEGIES = ['Export', 'Import', 'Quality Gate', 'Conversion', 'Validation'];
-const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support'];
+const STRATEGIES = ['Preparation', 'Export', 'Import', 'Quality Gate', 'Conversion', 'Validation'];
+const PHASES = ['Tables', 'Delta', 'Checkpoint', 'Finance', 'Logistics', 'PCA Tool', 'MPP', 'Support', 'Collector', 'NZD'];
 
-// Reset everything to default state
-function resetApplication() {
-  // Clear all state
-  AppState.runbooks = [];
-  AppState.downtimeStarted = false;
-  AppState.downtimeStartTime = null;
-  AppState.downtimeDuration = 24;
-  AppState.downtimePaused = false;
-  AppState.pausedDuration = 0;
-  AppState.pauseStartTime = null;
-  AppState.currentDraggedBlock = null;
-  AppState.dragOffset = 0;
-  
-  // Reset UI elements
-  document.getElementById('downtimeDuration').value = 24;
-  document.getElementById('startTimeDisplay').textContent = '--:--:--';
-  document.getElementById('endTimeDisplay').textContent = '--:--:--';
-  document.getElementById('currentDurationDisplay').textContent = '00:00:00';
-  document.getElementById('statusText').textContent = 'Not Started';
-  document.getElementById('statusText').style.color = 'var(--sap-warning)';
-  
-  document.getElementById('downtimeControls').innerHTML = `
-    <button class="btn primary" id="startDowntimeBtn" onclick="startDowntime()">Start Downtime</button>
-  `;
-  
-  // Hide current time indicator
-  const currentLine = document.getElementById('currentTimeLine');
-  if (currentLine) currentLine.style.display = 'none';
-  
-  // Clear tables and timeline
-  document.getElementById('runbookBody').innerHTML = '';
-  document.getElementById('timelineRows').innerHTML = '';
-  
-  // Add 3 default rows
-  addRunbookRow();
-  addRunbookRow();
-  addRunbookRow();
-  
-  alert('Application has been reset. All data cleared.');
-}
+// Browser close confirmation
+window.addEventListener('beforeunload', function (e) {
+  if (window.canWrite && window.canWrite() && AppState.downtimeStarted) {
+    const confirmationMessage = 'You have an active downtime session. Are you sure you want to leave?';
+    e.returnValue = confirmationMessage;
+    return confirmationMessage;
+  }
+});
 
 // Initialize application
 document.addEventListener('DOMContentLoaded', function() {
@@ -1099,13 +994,53 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeApp() {
-  // Add initial runbook rows
-  addRunbookRow();
-  addRunbookRow();
-  addRunbookRow();
-  
-  // Initialize timeline
   updateTimeline();
+  setupStartTimeInputs();
+  calculateEndTime();
+}
+
+function setupStartTimeInputs() {
+  // Show input fields when downtime is not started
+  if (!AppState.downtimeStarted) {
+    document.getElementById('startTimeInput').style.display = 'block';
+    document.getElementById('startTimeDisplay').style.display = 'none';
+    document.getElementById('currentDurationInput').style.display = 'block';
+    document.getElementById('currentDurationDisplay').style.display = 'none';
+    
+    // Set default start time to current time
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    document.getElementById('startTimeInput').value = `${hours}:${minutes}`;
+  }
+}
+
+function calculateEndTime() {
+  const duration = parseInt(document.getElementById('downtimeDuration').value) || 24;
+  const startTimeInput = document.getElementById('startTimeInput');
+  const endTimeDisplay = document.getElementById('endTimeDisplay');
+  
+  if (!AppState.downtimeStarted && startTimeInput.value) {
+    const [hours, minutes] = startTimeInput.value.split(':').map(Number);
+    const startDate = new Date();
+    startDate.setHours(hours, minutes, 0);
+    
+    const endDate = new Date(startDate.getTime() + duration * 3600000);
+    
+    const endHours = String(endDate.getHours()).padStart(2, '0');
+    const endMinutes = String(endDate.getMinutes()).padStart(2, '0');
+    const endSeconds = String(endDate.getSeconds()).padStart(2, '0');
+    
+    let displayText = `${endHours}:${endMinutes}:${endSeconds}`;
+    
+    // Calculate days difference
+    const daysDiff = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24));
+    if (daysDiff > 0) {
+      displayText += ` (+${daysDiff} day${daysDiff > 1 ? 's' : ''})`;
+    }
+    
+    endTimeDisplay.textContent = displayText;
+  }
 }
 
 function updateClock() {
@@ -1133,25 +1068,80 @@ function updateDuration() {
     `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+// Data Validation Functions
+function validateSchedules() {
+  const warnings = [];
+  const criticalPathItems = AppState.runbooks.filter(r => r.critical);
+  
+  // Check for overlapping critical path items
+  for (let i = 0; i < criticalPathItems.length; i++) {
+    for (let j = i + 1; j < criticalPathItems.length; j++) {
+      const item1 = criticalPathItems[i];
+      const item2 = criticalPathItems[j];
+      
+      const start1 = item1.scheduleHours + item1.scheduleMinutes / 60;
+      const end1 = start1 + item1.durationHours + item1.durationMinutes / 60;
+      const start2 = item2.scheduleHours + item2.scheduleMinutes / 60;
+      const end2 = start2 + item2.durationHours + item2.durationMinutes / 60;
+      
+      if ((start1 < end2 && end1 > start2)) {
+        warnings.push(`Critical path conflict: "${item1.runblock}" and "${item2.runblock}" overlap`);
+      }
+    }
+  }
+  
+  // Check for unrealistic durations (> 8 hours for single task)
+  AppState.runbooks.forEach(runbook => {
+    const duration = runbook.durationHours + runbook.durationMinutes / 60;
+    if (duration > 8) {
+      warnings.push(`Warning: "${runbook.runblock}" has duration > 8 hours (${runbook.durationHours}h ${runbook.durationMinutes}m)`);
+    }
+  });
+  
+  // Check for tasks extending beyond downtime window
+  AppState.runbooks.forEach(runbook => {
+    const start = runbook.scheduleHours + runbook.scheduleMinutes / 60;
+    const duration = runbook.durationHours + runbook.durationMinutes / 60;
+    if (start + duration > AppState.downtimeDuration) {
+      warnings.push(`Schedule conflict: "${runbook.runblock}" extends beyond downtime window`);
+    }
+  });
+  
+  return warnings;
+}
+
+function displayValidationWarnings() {
+  const warnings = validateSchedules();
+  const container = document.getElementById('validationMessages');
+  
+  if (!container) return;
+  
+  container.innerHTML = '';
+  if (warnings.length > 0) {
+    const warningDiv = document.createElement('div');
+    warningDiv.className = 'validation-warning';
+    warningDiv.innerHTML = '<strong>⚠ Validation Warnings:</strong><br>' + warnings.join('<br>');
+    container.appendChild(warningDiv);
+  }
+}
+
 function addRunbookRow() {
   const runbook = {
     id: Date.now() + Math.random(),
     sequence: AppState.runbooks.length + 1,
-    strategy: STRATEGIES[0], // 'Export'
-    phase: PHASES[0], // 'Tables' - EXPLICITLY set from PHASES array
-    runblock: '', // EMPTY string - no runblock name by default
-    // Responsibility is an optional field to indicate who owns this runblock.
+    strategy: STRATEGIES[0],
+    phase: PHASES[0],
+    runblock: '',
     responsibility: '',
+    critical: false,
     scheduleHours: 0,
     scheduleMinutes: 0,
     durationHours: 1,
     durationMinutes: 0,
     completed: false,
+    actualDuration: null,
     position: 0
   };
-  
-  // Verify phase is set correctly
-  console.log('New runbook created with phase:', runbook.phase);
   
   AppState.runbooks.push(runbook);
   renderRunbookTable();
@@ -1162,20 +1152,15 @@ function renderRunbookTable() {
   const tbody = document.getElementById('runbookBody');
   tbody.innerHTML = '';
   
-  // Sort by sequence
   AppState.runbooks.sort((a, b) => a.sequence - b.sequence);
   
   AppState.runbooks.forEach(runbook => {
     const row = document.createElement('tr');
-    // Determine if editing of model parameters should be disabled.  When
-    // downtime has started and is not paused, inputs and selects are
-    // disabled to prevent accidental modification.  Otherwise they remain
-    // editable.  This logic does not apply to the timeline controls.
     const editingDisabled = (AppState.downtimeStarted && !AppState.downtimePaused) ? 'disabled' : '';
     row.innerHTML = `
       <td>
         <input type="number" min="1" max="30" value="${runbook.sequence}" 
-               style="width:60px;" onchange="updateSequence(${runbook.id}, this.value)" ${editingDisabled}>
+               style="width:50px;" onchange="updateSequence(${runbook.id}, this.value)" ${editingDisabled}>
       </td>
       <td>
         <select onchange="updateStrategy(${runbook.id}, this.value)" ${editingDisabled}>
@@ -1197,6 +1182,11 @@ function renderRunbookTable() {
                maxlength="40" style="width:100%;"
                onchange="updateResponsibility(${runbook.id}, this.value)" ${editingDisabled}>
       </td>
+      <td class="critical-cell center">
+        <input type="checkbox" class="critical-checkbox" 
+               ${runbook.critical ? 'checked' : ''} 
+               onchange="updateCritical(${runbook.id}, this.checked)" ${editingDisabled}>
+      </td>
       <td class="center">
         <button class="btn small danger" onclick="removeRunbook(${runbook.id})" ${editingDisabled}>Remove</button>
       </td>
@@ -1209,19 +1199,17 @@ function updateSequence(id, value) {
   const runbook = AppState.runbooks.find(r => r.id === id);
   if (runbook) {
     const newSequence = parseInt(value) || 1;
-    const oldSequence = runbook.sequence;
     runbook.sequence = newSequence;
     
-    // If there are other runblocks with the new sequence number, sync their start times
     const sameSequence = AppState.runbooks.filter(r => r.sequence === newSequence && r.id !== id);
     if (sameSequence.length > 0) {
-      // Use the existing start time from runblocks with this sequence
       runbook.scheduleHours = sameSequence[0].scheduleHours;
       runbook.scheduleMinutes = sameSequence[0].scheduleMinutes;
     }
     
     renderRunbookTable();
     updateTimeline();
+    displayValidationWarnings();
   }
 }
 
@@ -1236,17 +1224,7 @@ function updateStrategy(id, value) {
 function updatePhase(id, value) {
   const runbook = AppState.runbooks.find(r => r.id === id);
   if (runbook) {
-    // Store original phase selection
-    runbook._originalPhase = value;
-    
-    // CRITICAL: Only accept valid phase values from dropdown
-    if (PHASES.includes(value)) {
-      runbook.phase = value;
-      console.log(`✓ Phase updated to: ${value}`);
-    } else {
-      console.error(`✗ BLOCKED invalid phase: ${value}`);
-      // Don't update phase with invalid value
-    }
+    runbook.phase = value;
     updateTimeline();
   }
 }
@@ -1254,21 +1232,11 @@ function updatePhase(id, value) {
 function updateRunblock(id, value) {
   const runbook = AppState.runbooks.find(r => r.id === id);
   if (runbook) {
-    // CRITICAL: Update ONLY runblock field, never touch phase
     runbook.runblock = value;
-    console.log(`Runblock updated to: ${value}, Phase remains: ${runbook.phase}`);
-    
-    // DO NOT modify phase field
     updateTimeline();
   }
 }
 
-// Update the responsibility for a given runbook.  Responsibility
-// indicates who is accountable for executing the runblock.  This does
-// not directly affect the timeline but is stored for export and
-// reference.  It is not modifiable once downtime has started unless
-// the process is paused.  We do not trigger a timeline refresh here
-// because the responsibility does not change scheduling.
 function updateResponsibility(id, value) {
   const runbook = AppState.runbooks.find(r => r.id === id);
   if (runbook) {
@@ -1276,30 +1244,20 @@ function updateResponsibility(id, value) {
   }
 }
 
-// Diagnostic function to check data integrity
-function checkDataIntegrity() {
-  console.log('=== Data Integrity Check ===');
-  AppState.runbooks.forEach((r, i) => {
-    const phaseValid = PHASES.includes(r.phase);
-    console.log(`Row ${i+1}:`, {
-      sequence: r.sequence,
-      phase: r.phase,
-      phaseValid: phaseValid ? '✓' : '✗ CORRUPT',
-      runblock: r.runblock,
-      strategy: r.strategy
-    });
-    
-    if (!phaseValid) {
-      console.error(`ERROR: Row ${i+1} has invalid phase: "${r.phase}"`);
-    }
-  });
-  console.log('=========================');
+function updateCritical(id, value) {
+  const runbook = AppState.runbooks.find(r => r.id === id);
+  if (runbook) {
+    runbook.critical = value;
+    updateTimeline();
+    displayValidationWarnings();
+  }
 }
 
 function removeRunbook(id) {
   AppState.runbooks = AppState.runbooks.filter(r => r.id !== id);
   renderRunbookTable();
   updateTimeline();
+  displayValidationWarnings();
 }
 
 function clearRunbook() {
@@ -1307,8 +1265,6 @@ function clearRunbook() {
     AppState.runbooks = [];
     renderRunbookTable();
     updateTimeline();
-    // Force a complete refresh of the timeline
-    document.getElementById('timelineRows').innerHTML = '';
   }
 }
 
@@ -1316,20 +1272,15 @@ function updateTimeline() {
   const duration = parseInt(document.getElementById('downtimeDuration').value) || 24;
   AppState.downtimeDuration = duration;
   
-  // Generate hour scale
   generateTimeScale(duration);
-  
-  // Generate timeline rows
   generateTimelineRows();
+  displayValidationWarnings();
 
-  // Position the finish line indicator at the end of the downtime window
   const finishLine = document.getElementById('finishLine');
   if (finishLine) {
     const pixelsPerHour = 60;
-    // The finish line appears just beyond the last hour mark
     const left = AppState.downtimeDuration * pixelsPerHour;
     finishLine.style.left = `${left}px`;
-    // Ensure the finish line spans the height of the scrollable area
     finishLine.style.display = 'block';
   }
 }
@@ -1341,7 +1292,6 @@ function generateTimeScale(hours) {
   const pixelsPerHour = 60;
   const totalWidth = hours * pixelsPerHour;
   
-  // Set width of scale
   scale.style.width = `${totalWidth}px`;
   
   for (let h = 0; h <= hours; h++) {
@@ -1354,44 +1304,34 @@ function generateTimeScale(hours) {
 }
 
 function generateTimelineRows() {
-  // Containers for track rows and control rows
   const trackContainer = document.getElementById('timelineRows');
   const controlsContainer = document.getElementById('timelineControlsRows');
-  // Ensure both containers exist (timelineControlsRows may not exist on initial load)
+  
   if (trackContainer) trackContainer.innerHTML = '';
   if (controlsContainer) controlsContainer.innerHTML = '';
   
-  // Sort runbooks by sequence
-  const sortedRunbooks = [...AppState.runbooks].sort((a, b) => a.sequence - b.sequence);
-  
-  sortedRunbooks.forEach((runbook, index) => {
-    // Create track row for the left scrollable area
+  // Only show rows with non-empty runblock names
+  const visibleRunbooks = [...AppState.runbooks]
+    .filter(rb => rb && rb.runblock && rb.runblock.trim().length > 0)
+    .sort((a, b) => a.sequence - b.sequence);
+
+  visibleRunbooks.forEach((runbook, index) => {
     const trackRow = createTimelineRow(runbook, index);
     if (trackContainer) trackContainer.appendChild(trackRow);
-    // Create control row for the right fixed area
+    
     const controlRow = createTimelineControlRow(runbook);
     if (controlsContainer) controlsContainer.appendChild(controlRow);
   });
 }
 
-
-function strategyToClass(name){
-  if (!name) return 'export';
-  const map = {
-    'export':'export',
-    'import':'import',
-    'quality gate':'quality',
-    'conversion':'conversion',
-    'validation':'validation',
-    'preparation':'preparation'
-  };
-  const key = String(name).toLowerCase();
-  return map[key] || key.replace(/[^a-z0-9]+/g,'-');
-}
-
 function createTimelineRow(runbook, index) {
   const row = document.createElement('div');
   row.className = 'timeline-row';
+  
+  if (runbook.critical) {
+    row.style.borderLeft = '3px solid #ff0000';
+    row.style.background = 'linear-gradient(90deg, rgba(255,0,0,0.05) 0%, transparent 10%)';
+  }
   
   const track = document.createElement('div');
   track.className = 'timeline-track';
@@ -1414,36 +1354,21 @@ function createTimelineRow(runbook, index) {
       diamond.style.opacity = '0.5';
       diamond.style.filter = 'grayscale(100%)';
     }
-    track.appendChild(diamond);
-
-    if (runbook.runblock) {
-      const nameLabel = document.createElement('div');
-      nameLabel.className = 'runblock-name';
-      nameLabel.textContent = runbook.runblock;
-      nameLabel.style.position = 'absolute';
-      nameLabel.style.top = '50%';
-      nameLabel.style.transform = 'translateY(-50%)';
-      track.appendChild(nameLabel);
-      requestAnimationFrame(() => {
-        const w = nameLabel.offsetWidth || 0;
-        nameLabel.style.left = `${Math.max(0, startX - w - 8)}px`;
-      });
+    if (runbook.critical) {
+      diamond.style.boxShadow = '0 0 8px rgba(255, 0, 0, 0.6)';
     }
+    
+    // Add label to the left for quality gates
+    const label = document.createElement('div');
+    label.className = 'block-label';
+    label.textContent = `#${runbook.sequence} ${runbook.runblock}`;
+    label.title = `${runbook.runblock} - ${runbook.phase}`;
+    diamond.appendChild(label);
+    
+    track.appendChild(diamond);
   } else {
     const block = createTimelineBlock(runbook);
     track.appendChild(block);
-    if (runbook.runblock) {
-      const nameLabel = document.createElement('div');
-      nameLabel.className = 'runblock-name';
-      nameLabel.textContent = runbook.runblock;
-      nameLabel.title = runbook.runblock;
-      nameLabel.style.position = 'absolute';
-      nameLabel.style.top = '50%';
-      nameLabel.style.transform = 'translateY(-50%)';
-      const blockWidth = Math.max(60, duration * pixelsPerHour - 4);
-      nameLabel.style.left = `${startX + blockWidth + 6}px`;
-      track.appendChild(nameLabel);
-    }
   }
 
   row.appendChild(track);
@@ -1452,83 +1377,82 @@ function createTimelineRow(runbook, index) {
   return row;
 }
 
-// Create a separate control row for the right fixed area of the timeline
 function createTimelineControlRow(runbook) {
   const row = document.createElement('div');
   row.className = 'timeline-control-row';
-  // Determine whether start/duration should be rendered as editable inputs or
-  // static text.  We no longer disable editing when downtime is running;
-  // instead, inputs remain editable until the runblock is marked complete.
-  // Once completed, the values become display‑only text.  The completion
-  // checkbox still respects the downtime state (disabled when downtime is
-  // not active).
 
-  // Start Time cell
+  // START column
   const startCell = document.createElement('div');
-  startCell.className = 'timeline-control-cell start-cell';
+  startCell.className = 'timeline-control-cell';
   if (runbook.completed) {
-    // Once completed, display the scheduled start time as static text
     const span = document.createElement('span');
     span.textContent = `${String(runbook.scheduleHours).padStart(2,'0')}:${String(runbook.scheduleMinutes).padStart(2,'0')}`;
     startCell.appendChild(span);
   } else {
-    // Before completion, expose an input field to set the start time (HH:MM)
     const input = document.createElement('input');
     input.type = 'text';
-    // Accept up to 3-digit hours and 2-digit minutes in HH:MM format
     input.pattern = '[0-9]{1,3}:[0-9]{2}';
     input.placeholder = 'HH:MM';
     input.value = `${String(runbook.scheduleHours).padStart(2,'0')}:${String(runbook.scheduleMinutes).padStart(2,'0')}`;
-    // Update the runbook when the user changes the time
     input.onchange = function() { updateScheduleTime(runbook.id, this.value); };
-    // Inputs remain enabled until the runblock is completed
     startCell.appendChild(input);
   }
   row.appendChild(startCell);
 
-  // Duration cell
-  const durationCell = document.createElement('div');
-  durationCell.className = 'timeline-control-cell duration-cell';
+  // PLAN column (formerly DURATION)
+  const planCell = document.createElement('div');
+  planCell.className = 'timeline-control-cell';
   if (runbook.completed) {
-    // Show static duration after completion
     const span = document.createElement('span');
     span.textContent = `${String(runbook.durationHours).padStart(2,'0')}:${String(runbook.durationMinutes).padStart(2,'0')}`;
-    durationCell.appendChild(span);
+    planCell.appendChild(span);
   } else {
-    // Provide an input to adjust duration (HH:MM)
     const input = document.createElement('input');
     input.type = 'text';
     input.pattern = '[0-9]{1,3}:[0-9]{2}';
     input.placeholder = 'HH:MM';
     input.value = `${String(runbook.durationHours).padStart(2,'0')}:${String(runbook.durationMinutes).padStart(2,'0')}`;
     input.onchange = function() { updateDurationTime(runbook.id, this.value); };
-    // Inputs remain enabled until the runblock is completed
-    durationCell.appendChild(input);
+    planCell.appendChild(input);
   }
-  row.appendChild(durationCell);
+  row.appendChild(planCell);
 
-  // Complete cell with checkbox
-  const completeCell = document.createElement('div');
-  completeCell.className = 'timeline-control-cell complete-cell';
+  // END column (formerly COMPLETE)
+  const endCell = document.createElement('div');
+  endCell.className = 'timeline-control-cell';
   const checkbox = document.createElement('input');
   checkbox.type = 'checkbox';
   checkbox.className = 'timeline-checkbox';
   checkbox.checked = runbook.completed;
   checkbox.title = 'Mark as completed';
-  // Disable the checkbox when downtime is not actively running (either paused or not started)
   checkbox.disabled = !(AppState.downtimeStarted && !AppState.downtimePaused);
   checkbox.onchange = function() { toggleCompleted(runbook.id, this.checked); };
-  completeCell.appendChild(checkbox);
-  row.appendChild(completeCell);
+  endCell.appendChild(checkbox);
+  row.appendChild(endCell);
+  
+  // ACTUAL column (new - read-only)
+  const actualCell = document.createElement('div');
+  actualCell.className = 'timeline-control-cell';
+  const actualSpan = document.createElement('span');
+  actualSpan.style.fontSize = '11px';
+  actualSpan.style.color = runbook.actualDuration ? '#107e3e' : '#999';
+  actualSpan.textContent = runbook.actualDuration || '--:--';
+  actualCell.appendChild(actualSpan);
+  row.appendChild(actualCell);
+  
   return row;
 }
 
 function createTimelineBlock(runbook) {
   const block = document.createElement('div');
   const strategyClass = runbook.strategy.toLowerCase().replace(/\s+/g, '');
-  block.className = `timeline-block block-${strategyToClass(runbook.strategy)}`;
+  block.className = `timeline-block block-${strategyClass}`;
   block.dataset.runbookId = runbook.id;
-  // Prevent dragging if the runbook is completed
+  
+  if (runbook.critical) {
+    block.classList.add('critical');
+  }
+  
   if (runbook.completed) {
     block.classList.add('completed');
     block.draggable = false;
@@ -1543,19 +1467,26 @@ function createTimelineBlock(runbook) {
   block.style.left = `${position * pixelsPerHour}px`;
   block.style.width = `${Math.max(60, duration * pixelsPerHour - 4)}px`;
   
-  // Create simple block label with sequence and phase only (e.g., "#1 Delta")
+  // Add label to the right of block
   const blockLabel = document.createElement('div');
   blockLabel.className = 'block-label';
-  blockLabel.textContent = `#${runbook.sequence} ${runbook.phase}`;
+  blockLabel.textContent = `#${runbook.sequence} ${runbook.runblock}`;
+  blockLabel.title = `${runbook.runblock} - ${runbook.phase}`;
   block.appendChild(blockLabel);
   
-  // Add drag event listeners only if the runbook is not completed
+  if (runbook.critical) {
+    const indicator = document.createElement('div');
+    indicator.className = 'critical-indicator';
+    indicator.textContent = '!';
+    indicator.title = 'Critical Path Item';
+    block.appendChild(indicator);
+  }
+  
   if (!runbook.completed) {
     block.addEventListener('dragstart', handleDragStart);
     block.addEventListener('dragend', handleDragEnd);
   }
   
-  // Do not attach dragover/drop listeners here; they will be attached when the track is created
   return block;
 }
 
@@ -1564,9 +1495,7 @@ function handleDragStart(e) {
   e.target.classList.add('dragging');
   AppState.currentDraggedBlock = e.target;
   
-  // Store the initial mouse position relative to the block
   const rect = e.target.getBoundingClientRect();
-  const trackRect = e.target.parentElement.getBoundingClientRect();
   AppState.dragOffset = e.clientX - rect.left;
 }
 
@@ -1580,14 +1509,12 @@ function handleDragOver(e) {
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
   
-  // Visual feedback during drag
   if (AppState.currentDraggedBlock && e.currentTarget.classList.contains('timeline-track')) {
     const track = e.currentTarget;
     const rect = track.getBoundingClientRect();
     const x = e.clientX - rect.left - (AppState.dragOffset || 0);
     const pixelsPerHour = 60;
     
-    // Calculate position
     const position = Math.max(0, x / pixelsPerHour);
     const runbookId = parseFloat(AppState.currentDraggedBlock.dataset.runbookId);
     const runbook = AppState.runbooks.find(r => r.id === runbookId);
@@ -1597,7 +1524,6 @@ function handleDragOver(e) {
       const maxPosition = AppState.downtimeDuration - duration;
       const validPosition = Math.min(position, maxPosition);
       
-      // Update visual position during drag (preview)
       AppState.currentDraggedBlock.style.left = `${validPosition * pixelsPerHour}px`;
     }
   }
@@ -1619,29 +1545,22 @@ function handleDrop(e) {
   
   if (runbook) {
     const duration = runbook.durationHours + (runbook.durationMinutes / 60);
-    
-    // Check if position is within downtime window
     const maxPosition = AppState.downtimeDuration - duration;
     const finalPosition = Math.min(newPosition, maxPosition);
-    
-    // Snap to 15-minute intervals for cleaner positioning
     const snappedPosition = Math.round(finalPosition * 4) / 4;
     
-    // Update schedule time based on position
     const newHours = Math.floor(snappedPosition);
     const newMinutes = Math.round((snappedPosition % 1) * 60);
     
     runbook.scheduleHours = newHours;
     runbook.scheduleMinutes = newMinutes;
     
-    // Sync all runblocks with the same sequence number
     const sameSequence = AppState.runbooks.filter(r => r.sequence === runbook.sequence);
     sameSequence.forEach(r => {
       r.scheduleHours = newHours;
       r.scheduleMinutes = newMinutes;
     });
     
-    // Refresh timeline
     updateTimeline();
   }
 }
@@ -1649,7 +1568,6 @@ function handleDrop(e) {
 function updateScheduleTime(id, value) {
   const runbook = AppState.runbooks.find(r => r.id === id);
   if (runbook) {
-    // Parse HH:MM format
     const parts = value.split(':');
     const hours = parseInt(parts[0]) || 0;
     const minutes = parseInt(parts[1]) || 0;
@@ -1657,7 +1575,6 @@ function updateScheduleTime(id, value) {
     runbook.scheduleHours = hours;
     runbook.scheduleMinutes = minutes;
     
-    // Sync all runblocks with the same sequence number
     const sameSequence = AppState.runbooks.filter(r => r.sequence === runbook.sequence);
     sameSequence.forEach(r => {
       r.scheduleHours = hours;
@@ -1671,7 +1588,6 @@ function updateScheduleTime(id, value) {
 function updateDurationTime(id, value) {
   const runbook = AppState.runbooks.find(r => r.id === id);
   if (runbook) {
-    // Parse HH:MM format
     const parts = value.split(':');
     const hours = parseInt(parts[0]) || 0;
     const minutes = parseInt(parts[1]) || 0;
@@ -1686,50 +1602,81 @@ function toggleCompleted(id, checked) {
   const runbook = AppState.runbooks.find(r => r.id === id);
   if (runbook) {
     runbook.completed = checked;
+    
+    if (checked && AppState.downtimeStartTime) {
+      // Calculate actual duration when marked as complete
+      const now = new Date();
+      const startTime = new Date(AppState.downtimeStartTime);
+      const scheduledOffset = runbook.scheduleHours * 3600000 + runbook.scheduleMinutes * 60000;
+      const taskStart = new Date(startTime.getTime() + scheduledOffset);
+      
+      const actualMs = now - taskStart - AppState.pausedDuration;
+      const actualHours = Math.floor(actualMs / 3600000);
+      const actualMinutes = Math.floor((actualMs % 3600000) / 60000);
+      
+      runbook.actualDuration = `${String(actualHours).padStart(2,'0')}:${String(actualMinutes).padStart(2,'0')}`;
+      AppState.completionTimes[id] = now;
+    } else if (!checked) {
+      runbook.actualDuration = null;
+      delete AppState.completionTimes[id];
+    }
+    
     updateTimeline();
   }
 }
 
 function startDowntime() {
+  // Get the start time from input or use current time
+  const startTimeInput = document.getElementById('startTimeInput');
+  if (startTimeInput && startTimeInput.value) {
+    const [hours, minutes] = startTimeInput.value.split(':').map(Number);
+    const startDate = new Date();
+    startDate.setHours(hours, minutes, 0);
+    AppState.downtimeStartTime = startDate;
+  } else {
+    AppState.downtimeStartTime = new Date();
+  }
+  
   AppState.downtimeStarted = true;
-  AppState.downtimeStartTime = new Date();
   AppState.pausedDuration = 0;
   
-  // Get downtime duration in hours
   const downtimeDuration = parseInt(document.getElementById('downtimeDuration').value) || 24;
   AppState.downtimeDuration = downtimeDuration;
+  
+  // Hide input fields and show displays
+  document.getElementById('startTimeInput').style.display = 'none';
+  document.getElementById('startTimeDisplay').style.display = 'block';
+  document.getElementById('currentDurationInput').style.display = 'none';
+  document.getElementById('currentDurationDisplay').style.display = 'block';
   
   const startTimeStr = AppState.downtimeStartTime.toLocaleTimeString('en-US', 
     { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   
-  // Calculate end time properly
   const endTime = new Date(AppState.downtimeStartTime.getTime() + downtimeDuration * 3600000);
   const endTimeStr = endTime.toLocaleTimeString('en-US', 
     { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   
+  const daysDiff = Math.floor((endTime - AppState.downtimeStartTime) / (1000 * 60 * 60 * 24));
+  let endDisplay = endTimeStr;
+  if (daysDiff > 0) {
+    endDisplay += ` (+${daysDiff} day${daysDiff > 1 ? 's' : ''})`;
+  }
+  
   document.getElementById('startTimeDisplay').textContent = startTimeStr;
-  document.getElementById('endTimeDisplay').textContent = endTimeStr;
+  document.getElementById('endTimeDisplay').textContent = endDisplay;
   document.getElementById('statusText').textContent = 'In Progress';
   document.getElementById('statusText').style.color = 'var(--sap-error)';
-  document.getElementById('statusText').style.color = 'var(--sap-error)';
-  document.getElementById('statusText').style.color = 'var(--sap-error)';
   
-  // Update control buttons
   document.getElementById('downtimeControls').innerHTML = `
     <button class="btn warning" onclick="pauseDowntime()">⏸ Pause</button>
-    <button class="btn danger" onclick="stopDowntime()">⏹ Stop</button>
+    <button class="btn danger" onclick="stopDowntime()">■ Stop</button>
   `;
   
-  // Show current time indicator at 0hr position
   const currentLine = document.getElementById('currentTimeLine');
   currentLine.style.display = 'block';
   currentLine.style.left = '0px';
   
   updateProgressIndicators();
-
-  // When downtime starts, regenerate the timeline and runbook table so that
-  // completion checkboxes become enabled and start/duration inputs become
-  // read-only.  Also disable editing of model parameters.
   updateTimeline();
   renderRunbookTable();
 }
@@ -1743,11 +1690,9 @@ function pauseDowntime() {
     
     document.getElementById('downtimeControls').innerHTML = `
       <button class="btn primary" onclick="resumeDowntime()">▶ Resume</button>
-      <button class="btn danger" onclick="stopDowntime()">⏹ Stop</button>
+      <button class="btn danger" onclick="stopDowntime()">■ Stop</button>
     `;
 
-    // Regenerate timeline and runbook table to disable completion checkboxes
-    // and re-enable start/duration inputs and model parameter editing when paused.
     updateTimeline();
     renderRunbookTable();
   }
@@ -1761,17 +1706,16 @@ function resumeDowntime() {
     AppState.pauseStartTime = null;
     
     document.getElementById('statusText').textContent = 'In Progress';
-  document.getElementById('statusText').style.color = 'var(--sap-error)';
-  document.getElementById('statusText').style.color = 'var(--sap-error)';
     document.getElementById('statusText').style.color = 'var(--sap-error)';
     
     document.getElementById('downtimeControls').innerHTML = `
       <button class="btn warning" onclick="pauseDowntime()">⏸ Pause</button>
-      <button class="btn danger" onclick="stopDowntime()">⏹ Stop</button>
+      <button class="btn danger" onclick="stopDowntime()">■ Stop</button>
     `;
+    
+    const currentLine = document.getElementById('currentTimeLine');
+    currentLine.style.display = 'block';
 
-    // When resuming from pause, regenerate the timeline and runbook table
-    // so that completion checkboxes are enabled and inputs become read-only again
     updateTimeline();
     renderRunbookTable();
   }
@@ -1785,6 +1729,12 @@ function stopDowntime() {
     AppState.pausedDuration = 0;
     AppState.pauseStartTime = null;
     
+    // Reset actual durations
+    AppState.runbooks.forEach(r => r.actualDuration = null);
+    AppState.completionTimes = {};
+    
+    setupStartTimeInputs();
+    
     document.getElementById('startTimeDisplay').textContent = '--:--:--';
     document.getElementById('endTimeDisplay').textContent = '--:--:--';
     document.getElementById('currentDurationDisplay').textContent = '00:00:00';
@@ -1795,12 +1745,9 @@ function stopDowntime() {
       <button class="btn primary" id="startDowntimeBtn" onclick="startDowntime()">Start Downtime</button>
     `;
     
-    // Hide current time indicator
     document.getElementById('currentTimeLine').style.display = 'none';
     
-    // Refresh timeline to remove completion checkboxes
     updateTimeline();
-    // Re-enable editing of model parameters once downtime has stopped
     renderRunbookTable();
   }
 }
@@ -1810,60 +1757,54 @@ function updateProgressIndicators() {
   
   const now = new Date();
   const elapsedMs = now - AppState.downtimeStartTime - AppState.pausedDuration;
-  const elapsed = elapsedMs / 3600000; // Hours
+  const elapsed = elapsedMs / 3600000;
   
-  // Update current time line position (starts from left edge of timeline)
   const pixelsPerHour = 60;
   const linePosition = Math.min(elapsed * pixelsPerHour, AppState.downtimeDuration * pixelsPerHour);
   const currentLine = document.getElementById('currentTimeLine');
   currentLine.style.left = `${linePosition}px`;
+  currentLine.style.display = 'block';
   
-  // Calculate elapsed time in HH:MM:SS format
   const totalSeconds = Math.floor(elapsedMs / 1000);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   
-  // Update label with current duration
   const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   document.getElementById('currentTimeLabel').textContent = timeStr;
     
-  // Check if downtime is complete and update status
   if (elapsed >= AppState.downtimeDuration) {
     document.getElementById('statusText').textContent = 'Completed';
     document.getElementById('statusText').style.color = 'var(--sap-accent)';
     
-    // Refresh timeline to show complete checkboxes
     updateTimeline();
   }
 }
 
 function downloadExcel() {
-  // Include responsibility in the exported CSV so users can track who owns each runblock
   const data = AppState.runbooks.map(r => ({
     Sequence: r.sequence,
     Strategy: r.strategy,
     Phase: r.phase,
     Runblock: r.runblock,
     Responsibility: r.responsibility || '',
+    Critical: r.critical ? 'Yes' : 'No',
     ScheduleTime: `${String(r.scheduleHours).padStart(2,'0')}:${String(r.scheduleMinutes).padStart(2,'0')}`,
-    Duration: `${String(r.durationHours).padStart(2,'0')}:${String(r.durationMinutes).padStart(2,'0')}`,
+    PlannedDuration: `${String(r.durationHours).padStart(2,'0')}:${String(r.durationMinutes).padStart(2,'0')}`,
+    ActualDuration: r.actualDuration || '',
     Completed: r.completed ? 'Yes' : 'No'
   }));
   
-  // Create CSV content
   const headers = Object.keys(data[0] || {});
   const csvContent = [
     headers.join(','),
     ...data.map(row => headers.map(header => `"${row[header] || ''}"`).join(','))
   ].join('\n');
   
-  // Get customer name for filename
   const customerName = document.getElementById('customerName').value || 'customer';
   const safeCustomerName = customerName.replace(/[^a-zA-Z0-9]/g, '_');
   const dateStr = new Date().toISOString().slice(0,10);
   
-  // Download file
   const blob = new Blob([csvContent], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1890,13 +1831,13 @@ function uploadExcel(event) {
       
       for (let i = 1; i < lines.length; i++) {
         if (lines[i].trim()) {
-          const values = lines[i].match(/(".*?"|[^,]+)/g).map(v => v.replace(/"/g, '').trim());
+          const values = lines[i].match(/(".*?"|[^,]+)/g)?.map(v => v.replace(/"/g, '').trim()) || [];
           
           const scheduleTime = values[headers.indexOf('ScheduleTime')] || '00:00';
           const [scheduleHours, scheduleMinutes] = scheduleTime.split(':').map(Number);
           
-          const duration = values[headers.indexOf('Duration')] || '01:00';
-          const [durationHours, durationMinutes] = duration.split(':').map(Number);
+          const planDuration = values[headers.indexOf('PlannedDuration')] || values[headers.indexOf('Duration')] || '01:00';
+          const [durationHours, durationMinutes] = planDuration.split(':').map(Number);
           
           const runbook = {
             id: Date.now() + Math.random() + i,
@@ -1904,12 +1845,13 @@ function uploadExcel(event) {
             strategy: values[headers.indexOf('Strategy')] || STRATEGIES[0],
             phase: values[headers.indexOf('Phase')] || PHASES[0],
             runblock: values[headers.indexOf('Runblock')] || '',
-            // Responsibility may not be present in older files; default to empty string
             responsibility: values[headers.indexOf('Responsibility')] || '',
+            critical: values[headers.indexOf('Critical')] === 'Yes',
             scheduleHours: scheduleHours || 0,
             scheduleMinutes: scheduleMinutes || 0,
             durationHours: durationHours || 1,
             durationMinutes: durationMinutes || 0,
+            actualDuration: values[headers.indexOf('ActualDuration')] || null,
             completed: values[headers.indexOf('Completed')] === 'Yes'
           };
           
@@ -1928,41 +1870,139 @@ function uploadExcel(event) {
   };
   reader.readAsText(file);
   
-  // Reset file input
   event.target.value = '';
 }
 
-// Generate a printable report (use browser's Save as PDF).
-// Includes finish line and current duration line (if downtime started).
-function generateReport(){
-  // Ensure the current time line is visible for the snapshot if downtime is running
-  if (AppState.downtimeStarted) {
-    const ctl = document.getElementById('currentTimeLine');
-    if (ctl) ctl.style.display = 'block';
-    updateProgressIndicators();
+async function generatePDFReport() {
+  const { jsPDF } = window.jspdf;
+  
+  // Create new PDF document
+  const pdf = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
+  
+  // Get customer info
+  const customerName = document.getElementById('customerName').value || 'Unknown Customer';
+  const transformCycle = document.getElementById('transformCycle').value || 'Unknown Phase';
+  const currentDate = new Date().toLocaleString();
+  
+  // Add header
+  pdf.setFontSize(20);
+  pdf.text('Technical Downtime Report', 20, 20);
+  
+  pdf.setFontSize(12);
+  pdf.text(`Customer: ${customerName}`, 20, 30);
+  pdf.text(`Transform Cycle: ${transformCycle}`, 20, 37);
+  pdf.text(`Generated: ${currentDate}`, 20, 44);
+  
+  // Add status information
+  pdf.setFontSize(14);
+  pdf.text('Execution Status', 20, 55);
+  
+  pdf.setFontSize(10);
+  const statusText = document.getElementById('statusText').textContent;
+  const startTime = document.getElementById('startTimeDisplay').textContent;
+  const endTime = document.getElementById('endTimeDisplay').textContent;
+  const duration = document.getElementById('currentDurationDisplay').textContent;
+  
+  pdf.text(`Status: ${statusText}`, 20, 62);
+  pdf.text(`Start Time: ${startTime}`, 20, 68);
+  pdf.text(`End Time: ${endTime}`, 20, 74);
+  pdf.text(`Current Duration: ${duration}`, 20, 80);
+  
+  // Capture timeline as image
+  const timelineContainer = document.querySelector('.timeline-container');
+  if (timelineContainer) {
+    try {
+      const canvas = await html2canvas(timelineContainer, {
+        scale: 2,
+        logging: false,
+        useCORS: true
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      
+      // Add timeline image
+      pdf.text('Timeline View', 20, 92);
+      const imgWidth = 250;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 20, 97, imgWidth, Math.min(imgHeight, 80));
+      
+      // Add new page for runbook details
+      pdf.addPage();
+      pdf.setFontSize(14);
+      pdf.text('Runbook Details', 20, 20);
+      
+      // Add table headers
+      pdf.setFontSize(9);
+      let yPos = 30;
+      const headers = ['Seq', 'Strategy', 'Phase', 'Runblock', 'Responsibility', 'Critical', 'Start', 'Plan', 'Actual', 'Complete'];
+      const xPositions = [20, 30, 55, 80, 110, 150, 175, 195, 215, 235];
+      
+      headers.forEach((header, i) => {
+        pdf.text(header, xPositions[i], yPos);
+      });
+      
+      // Add table data
+      yPos += 7;
+      AppState.runbooks.forEach((runbook, index) => {
+        if (yPos > 180) {
+          pdf.addPage();
+          yPos = 20;
+          headers.forEach((header, i) => {
+            pdf.text(header, xPositions[i], yPos);
+          });
+          yPos += 7;
+        }
+        
+        const rowData = [
+          runbook.sequence.toString(),
+          runbook.strategy.substring(0, 15),
+          runbook.phase.substring(0, 15),
+          runbook.runblock.substring(0, 20),
+          (runbook.responsibility || '').substring(0, 20),
+          runbook.critical ? 'Yes' : 'No',
+          `${String(runbook.scheduleHours).padStart(2,'0')}:${String(runbook.scheduleMinutes).padStart(2,'0')}`,
+          `${String(runbook.durationHours).padStart(2,'0')}:${String(runbook.durationMinutes).padStart(2,'0')}`,
+          runbook.actualDuration || '--:--',
+          runbook.completed ? 'Yes' : 'No'
+        ];
+        
+        rowData.forEach((data, i) => {
+          pdf.text(data, xPositions[i], yPos);
+        });
+        
+        yPos += 6;
+      });
+      
+      // Add summary statistics
+      pdf.addPage();
+      pdf.setFontSize(14);
+      pdf.text('Summary Statistics', 20, 20);
+      
+      pdf.setFontSize(10);
+      const totalTasks = AppState.runbooks.length;
+      const completedTasks = AppState.runbooks.filter(r => r.completed).length;
+      const criticalTasks = AppState.runbooks.filter(r => r.critical).length;
+      const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+      
+      pdf.text(`Total Tasks: ${totalTasks}`, 20, 30);
+      pdf.text(`Completed Tasks: ${completedTasks}`, 20, 36);
+      pdf.text(`Critical Path Items: ${criticalTasks}`, 20, 42);
+      pdf.text(`Completion Rate: ${completionRate}%`, 20, 48);
+      
+      // Save PDF
+      const safeCustomerName = customerName.replace(/[^a-zA-Z0-9]/g, '_');
+      const dateStr = new Date().toISOString().slice(0,10);
+      pdf.save(`${safeCustomerName}_downtime_report_${dateStr}.pdf`);
+      
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF report. Please try again.');
+    }
   }
-  // Add a simple header with customer and transform cycle above the timeline for print
-  const headerId = 'reportHeaderTemp';
-  let hdr = document.getElementById(headerId);
-  if (!hdr) {
-    const panel = document.getElementById('progressPanel');
-    hdr = document.createElement('div');
-    hdr.id = headerId;
-    hdr.style.marginBottom = '8px';
-    hdr.style.fontSize = '14px';
-    hdr.style.fontWeight = '600';
-    const cust = document.getElementById('customerName')?.value || '';
-    const cycle = document.getElementById('transformCycle')?.value || '';
-    const ts = new Date().toLocaleString();
-    hdr.textContent = `Customer: ${cust}   •   Transform Cycle: ${cycle}   •   Snapshot: ${ts}`;
-    panel.insertBefore(hdr, panel.firstChild.nextSibling); // just under the H2
-  } else {
-    const cust = document.getElementById('customerName')?.value || '';
-    const cycle = document.getElementById('transformCycle')?.value || '';
-    const ts = new Date().toLocaleString();
-    hdr.textContent = `Customer: ${cust}   •   Transform Cycle: ${cycle}   •   Snapshot: ${ts}`;
-  }
-  window.print();
+}
+
+function generateReport() {
+  generatePDFReport();
 }
 
 </script>
@@ -1979,8 +2019,7 @@ function generateReport(){
   }
 </script>
 
-
-<!-- === Firebase realtime sync — NO-TAKEOVER + locked fields + URL phase + viewer overlay + Reset + Viewer Status & Timeline === -->
+<!-- Firebase realtime sync -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -1990,7 +2029,7 @@ function generateReport(){
     apiKey: "AIzaSyAredpIvTx0c7uxn23HZoD3YkTgcG4cHbk",
     authDomain: "downtime-tracking-135f6.firebaseapp.com",
     projectId: "downtime-tracking-135f6",
-    storageBucket: "downtime-tracking-135f6.firebasestorage.app",
+    storageBucket: "downtime-tracking-135f6.firebaseapp.com",
     messagingSenderId: "422856401277",
     appId: "1:422856401277:web:7b10cb426abf816d74ec14",
     measurementId: "G-CJ2F30SYRY"
@@ -2000,7 +2039,7 @@ function generateReport(){
   const db = getFirestore(app);
   const auth = getAuth(app);
 
-  // URL params (support ?phase= or ?transformCycle=)
+  // URL params
   const url = new URL(window.location.href);
   let customerParam = url.searchParams.get("customer") || "";
   let phaseParam = url.searchParams.get("phase") || url.searchParams.get("transformCycle") || "";
@@ -2025,7 +2064,7 @@ function generateReport(){
   if (nameInput && customerParam) nameInput.value = customerParam;
   if (phaseInput && phaseParam) phaseInput.value = phaseParam;
 
-  // ===== Overlay (mode + online + viewer progress + Reset button) =====
+  // Overlay
   (function overlay(){
     const right = document.createElement("div");
     right.style.cssText = "position:fixed;right:10px;bottom:10px;background:#fff;border:1px solid #dcdcdc;border-radius:8px;padding:10px 12px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);z-index:100000;min-width:280px";
@@ -2042,25 +2081,24 @@ function generateReport(){
         <div style="font-size:12px;margin-bottom:4px"><b>Start:</b> <span id="rt-start">—</span></div>
         <div style="font-size:12px;margin-bottom:6px"><b>ETA:</b> <span id="rt-eta">—</span></div>
         <div style="position:relative;height:10px;border:1px solid #dcdcdc;border-radius:999px;overflow:hidden;background:#f2f3f6">
-          <div id="rt-bar" style="position:absolute;left:0;top:0;bottom:0;width:0%"></div>
+          <div id="rt-bar" style="position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg, rgba(0,0,0,.2), rgba(0,0,0,.5))"></div>
         </div>
         <div id="rt-bar-label" style="font-size:11px;margin-top:4px;text-align:right">0%</div>
       </div>`;
     document.body.appendChild(right);
     document.getElementById("rt-copy").onclick = async () => {
       await navigator.clipboard.writeText(window.location.href);
-      const btn = document.getElementById("rt-copy"); const prev = btn.textContent; btn.textContent="Copied"; setTimeout(()=>btn.textContent=prev, 1000);
+      const btn = document.getElementById("rt-copy"); 
+      const prev = btn.textContent; 
+      btn.textContent="Copied"; 
+      setTimeout(()=>btn.textContent=prev, 1000);
     };
-    const bar = right.querySelector("#rt-bar");
-    bar.style.background = "linear-gradient(90deg, rgba(0,0,0,.2), rgba(0,0,0,.5))";
 
-    // Left-side floating Reset button
     const left = document.createElement("div");
     left.style.cssText = "position:fixed;left:10px;bottom:10px;z-index:100001";
     left.innerHTML = `<button id="rt-reset" title="Reset session for all viewers" style="padding:10px 14px;border:none;border-radius:8px;cursor:pointer;background:#d32f2f;color:#fff;font-weight:600;box-shadow:0 2px 6px rgba(0,0,0,.15)">Reset</button>`;
     document.body.appendChild(left);
 
-    // Viewer top status banner (only visible in VIEWER)
     const top = document.createElement("div");
     top.id = "rt-status-banner";
     top.style.cssText = "position:fixed;top:6px;left:50%;transform:translateX(-50%);padding:6px 10px;background:#fff;border:1px solid #dcdcdc;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.08);font:13px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;z-index:100002;display:none";
@@ -2068,35 +2106,76 @@ function generateReport(){
     document.body.appendChild(top);
   })();
 
-  // ===== Auth + presence =====
+  // Auth + presence
   await signInAnonymously(auth);
   const uid = await new Promise((resolve) => onAuthStateChanged(auth, (u)=>{ if(u){ resolve(u.uid); } }));
   const presenceRef = doc(db, "sessions", customerKey, "presence", uid);
+  
   async function upsertPresence(){
-    try { await setDoc(presenceRef, { name: (nameInput && nameInput.value) || customerParam || "Guest", lastActive: serverTimestamp() }, { merge: true }); }
+    try { 
+      await setDoc(presenceRef, { 
+        name: (nameInput && nameInput.value) || customerParam || "Guest", 
+        lastActive: serverTimestamp() 
+      }, { merge: true }); 
+    }
     catch(e){ console.error("[presence] setDoc failed:", e); }
   }
+  
   await upsertPresence();
   setInterval(upsertPresence, 20000);
-  window.addEventListener("beforeunload", async () => { try{ await setDoc(presenceRef, { lastActive: serverTimestamp(), leftAt: serverTimestamp() }, { merge:true }); }catch{} });
-
-  // ===== Online indicator =====
-  onSnapshot(collection(db, "sessions", customerKey, "presence"), (snap) => {
-    const now = Date.now(); let online = 0;
-    snap.forEach(d => { const t = d.data().lastActive?.toMillis?.() || 0; if (now - t < 45000) online++; });
-    const el = document.getElementById("rt-online"); if (el) el.textContent = `${online} online`;
+  window.addEventListener("beforeunload", async () => { 
+    try{ 
+      await setDoc(presenceRef, { 
+        lastActive: serverTimestamp(), 
+        leftAt: serverTimestamp() 
+      }, { merge:true }); 
+    }catch{} 
   });
 
-  // ===== Helpers =====
+  // Online indicator
+  onSnapshot(collection(db, "sessions", customerKey, "presence"), (snap) => {
+    const now = Date.now(); 
+    let online = 0;
+    snap.forEach(d => { 
+      const t = d.data().lastActive?.toMillis?.() || 0; 
+      if (now - t < 45000) online++; 
+    });
+    const el = document.getElementById("rt-online"); 
+    if (el) el.textContent = `${online} online`;
+  });
+
+  // Helpers
   const sessionRef = doc(db, "sessions", customerKey);
-  const sleep = (ms)=>new Promise(r=>setTimeout(r,ms)); await sleep(200);
-  function S(){ return window._AppStateRef || window.AppState || (window._AppStateRef = { runbooks:[], downtimeStarted:false, downtimePaused:false, pausedDuration:0, downtimeDuration:24, downtimeStartTime:null }); }
+  const sleep = (ms)=>new Promise(r=>setTimeout(r,ms)); 
+  await sleep(200);
+  
+  function S(){ 
+    return window.AppState || { 
+      runbooks:[], 
+      downtimeStarted:false, 
+      downtimePaused:false, 
+      pausedDuration:0, 
+      downtimeDuration:24, 
+      downtimeStartTime:null,
+      completionTimes: {}
+    }; 
+  }
 
   function lockFieldsForStarted(started){
     const lock = (el, yes) => {
       if (!el) return;
-      if (yes) { el.setAttribute("disabled","true"); el.style.pointerEvents="none"; el.style.opacity="0.7"; el.title="Locked while timeline is running"; }
-      else { el.removeAttribute("disabled"); el.style.pointerEvents=""; el.style.opacity=""; el.title=""; }
+      if (yes) { 
+        el.setAttribute("disabled","true"); 
+        el.style.pointerEvents="none"; 
+        el.style.opacity="0.7"; 
+        el.title="Locked while timeline is running"; 
+      }
+      else { 
+        el.removeAttribute("disabled"); 
+        el.style.pointerEvents=""; 
+        el.style.opacity=""; 
+        el.title=""; 
+      }
     };
     lock(document.getElementById("customerName"), !!started);
     lock(document.getElementById("transformCycle"), !!started);
@@ -2113,12 +2192,13 @@ function generateReport(){
       downtimeDuration: s.downtimeDuration ?? 24,
       downtimePaused: !!s.downtimePaused,
       pausedDuration: s.pausedDuration ?? 0,
+      completionTimes: s.completionTimes || {},
       customerName: cn,
       transformCycle: tp
     };
   }
 
-  // ===== Viewer UI helpers =====
+  // Viewer UI helpers
   function statusString(s){
     const now = Date.now();
     if (!s.downtimeStarted || !s.downtimeStartTime) return "Not started";
@@ -2128,6 +2208,7 @@ function generateReport(){
     if (now >= endMs) return "Completed";
     return "Running";
   }
+  
   function updateViewerStatusBanner(){
     const s = S();
     const isViewer = !canWrite();
@@ -2141,6 +2222,7 @@ function generateReport(){
       if (topTxt) topTxt.textContent = text;
     }
   }
+  
   function computePercent(){
     const s = S();
     if (!s.downtimeStarted || !s.downtimeStartTime) return 0;
@@ -2150,6 +2232,7 @@ function generateReport(){
     pct = Math.max(0, Math.min(1, pct));
     return pct;
   }
+  
   function updateViewerProgress(){
     const s = S();
     const startEl = document.getElementById("rt-start");
@@ -2157,6 +2240,7 @@ function generateReport(){
     const bar = document.getElementById("rt-bar");
     const lbl = document.getElementById("rt-bar-label");
     const pct = computePercent();
+    
     if (!s.downtimeStarted || !s.downtimeStartTime) {
       if (startEl) startEl.textContent = "—";
       if (etaEl) etaEl.textContent = "—";
@@ -2164,28 +2248,51 @@ function generateReport(){
       if (lbl) lbl.textContent = "0%";
       return;
     }
+    
     const start = (s.downtimeStartTime instanceof Date) ? s.downtimeStartTime : new Date(s.downtimeStartTime);
     const durMs = (typeof s.downtimeDuration === "number" ? s.downtimeDuration : 24) * 3600 * 1000;
     const end = new Date(start.getTime() + durMs);
+    
     if (startEl) startEl.textContent = start.toLocaleString();
     if (etaEl) etaEl.textContent = end.toLocaleString();
+    
     const pctStr = Math.round(pct * 100) + "%";
     if (bar) bar.style.width = pctStr;
     if (lbl) lbl.textContent = pctStr;
   }
+  
   function updateViewerTimelineVisual(){
+    const s = S();
+    
+    // Update timeline if function exists
     if (typeof window.updateTimeline === "function") { 
-      try { window.updateTimeline(); return; } catch {}
+      try { window.updateTimeline(); } catch {}
     }
-    const pct = computePercent() * 100;
-    const cursor = document.querySelector("#statusLine, .status-line, #currentStatusLine, .timeline-now, .timeline-cursor");
-    if (cursor) {
-      cursor.style.left = pct + "%";
-      cursor.style.transform = "translateX(-50%)";
-    }
-    const fill = document.querySelector("#timelineProgress, .timeline-progress, #progressFill, .progress-fill, .timeline-fill");
-    if (fill) {
-      fill.style.width = pct + "%";
+    
+    // Update current time line position for viewer mode - synced with host
+    if (s.downtimeStarted && s.downtimeStartTime) {
+      const now = new Date();
+      const start = (s.downtimeStartTime instanceof Date) ? s.downtimeStartTime : new Date(s.downtimeStartTime);
+      const elapsedMs = now - start - (s.pausedDuration || 0);
+      const elapsed = elapsedMs / 3600000; // hours
+      const pixelsPerHour = 60;
+      const linePosition = Math.min(elapsed * pixelsPerHour, (s.downtimeDuration || 24) * pixelsPerHour);
+      
+      const currentLine = document.getElementById('currentTimeLine');
+      if (currentLine) {
+        currentLine.style.left = `${linePosition}px`;
+        currentLine.style.display = s.downtimeStarted ? 'block' : 'none';
+        
+        // Update label
+        const totalSeconds = Math.floor(elapsedMs / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        
+        const label = document.getElementById('currentTimeLabel');
+        if (label) label.textContent = timeStr;
+      }
     }
   }
 
@@ -2197,7 +2304,8 @@ function generateReport(){
       downtimeDuration: typeof st.downtimeDuration === "number" ? st.downtimeDuration : 24,
       downtimePaused: !!st.downtimePaused,
       pausedDuration: typeof st.pausedDuration === "number" ? st.pausedDuration : 0,
-      downtimeStartTime: st.downtimeStartTime ? new Date(st.downtimeStartTime) : null
+      downtimeStartTime: st.downtimeStartTime ? new Date(st.downtimeStartTime) : null,
+      completionTimes: st.completionTimes || {}
     });
 
     const cn = document.getElementById("customerName");
@@ -2217,30 +2325,48 @@ function generateReport(){
     updateViewerTimelineVisual();
   }
 
-  // ===== Mode — NO TAKEOVER =====
+  // Mode
   let initialApplied=false, lastSent=null, writing=false, remoteController=null, controllerAttempted=false;
-  function canWrite(){ return !viewerForced && (!remoteController || remoteController === uid); }
+  
+  window.canWrite = function(){ 
+    return !viewerForced && remoteController === uid; 
+  }
+  
   function setReadOnlyUI(ro){
     const modeEl = document.getElementById("rt-mode");
     if (modeEl) modeEl.textContent = ro ? "mode: VIEWER" : "mode: HOST";
+    
+    // Apply viewer mode class to body for CSS styling
+    if (ro) {
+      document.body.classList.add('viewer-mode');
+    } else {
+      document.body.classList.remove('viewer-mode');
+    }
+    
     const nodes = document.querySelectorAll("button, input, select, textarea");
-nodes.forEach(el => {
-  if (!el) return;
-  if (el.id === "rt-copy" || el.id === "rt-reset") return; // always allow overlay buttons
-  const isModelBtn = el.dataset?.role === "model" || el.classList?.contains("model-btn") || el.id === "reportBtn";
-  if (ro && !isModelBtn) {
-    el.setAttribute("disabled","true");
-    el.style.pointerEvents="none"; el.style.opacity="0.6";
-  } else {
-    el.removeAttribute("disabled");
-    el.style.pointerEvents=""; el.style.opacity="";
-  }
-});
+    nodes.forEach(el => { 
+      if (!el) return; 
+      if (el.id === "rt-copy" || el.id === "rt-reset") return;
+      if (ro) { 
+        el.setAttribute("disabled","true"); 
+        el.style.pointerEvents="none"; 
+        el.style.opacity="0.7"; 
+      }
+      else { 
+        el.removeAttribute("disabled"); 
+        el.style.pointerEvents=""; 
+        el.style.opacity=""; 
+      } 
+    });
+    
     lockFieldsForStarted(!!S().downtimeStarted);
+    
     const panel = document.getElementById("rt-viewer-panel");
     if (panel) panel.style.display = ro ? "block" : "none";
+    
     const statusBanner = document.getElementById("rt-status-banner");
     if (statusBanner) statusBanner.style.display = ro ? "block" : "none";
+    
     updateViewerStatusBanner();
     updateViewerProgress();
     updateViewerTimelineVisual();
@@ -2249,21 +2375,34 @@ nodes.forEach(el => {
   // Ensure doc exists
   try {
     const s = await getDoc(sessionRef);
-    if (!s.exists()) await setDoc(sessionRef, { state: serialize(), updatedAt: serverTimestamp() }, { merge:true });
-  } catch(e){ console.error("[session] ensure failed:", e); }
+    if (!s.exists()) {
+      await setDoc(sessionRef, { 
+        state: serialize(), 
+        updatedAt: serverTimestamp() 
+      }, { merge:true });
+    }
+  } catch(e){ 
+    console.error("[session] ensure failed:", e); 
+  }
 
   // Subscribe to session
   onSnapshot(sessionRef, async (snap) => {
     const data = snap.data() || {};
     remoteController = data.controllerUid || null;
+    
     if (data.state) applyRemoteState(data.state);
 
     if (!remoteController && !controllerAttempted && !viewerForced) {
       controllerAttempted = true;
-      try { await setDoc(sessionRef, { controllerUid: uid, controllerSetAt: serverTimestamp() }, { merge:true }); } catch {}
+      try { 
+        await setDoc(sessionRef, { 
+          controllerUid: uid, 
+          controllerSetAt: serverTimestamp() 
+        }, { merge:true }); 
+      } catch {}
     }
 
-    setReadOnlyUI(!canWrite());
+    setReadOnlyUI(!window.canWrite());
 
     if (!initialApplied) {
       initialApplied = true;
@@ -2271,26 +2410,55 @@ nodes.forEach(el => {
     }
   });
 
-  // ===== Push (host only) =====
+  // Push (host only)
   async function push(reason="debounce"){
-    if (!initialApplied || !canWrite()) return;
+    if (!initialApplied || !window.canWrite()) return;
     try{
       const nowJson = JSON.stringify(serialize());
       if (nowJson === lastSent || writing) return;
       writing = true;
-      await updateDoc(sessionRef, { state: JSON.parse(nowJson), updatedAt: serverTimestamp(), reason });
+      await updateDoc(sessionRef, { 
+        state: JSON.parse(nowJson), 
+        updatedAt: serverTimestamp(), 
+        reason 
+      });
       lastSent = nowJson;
     }catch(e){
-      try{ await setDoc(sessionRef, { state: serialize(), updatedAt: serverTimestamp(), reason }, { merge:true });
-           lastSent = JSON.stringify(serialize()); }catch(e2){ console.error("[session] write failed:", e2); }
-    }finally{ writing=false; }
+      try{ 
+        await setDoc(sessionRef, { 
+          state: serialize(), 
+          updatedAt: serverTimestamp(), 
+          reason 
+        }, { merge:true });
+        lastSent = JSON.stringify(serialize()); 
+      }catch(e2){ 
+        console.error("[session] write failed:", e2); 
+      }
+    }finally{ 
+      writing=false; 
+    }
   }
+  
   let timer=null;
-  const schedule = () => { clearTimeout(timer); timer = setTimeout(()=>push("debounce"), 250); };
+  const schedule = () => { 
+    clearTimeout(timer); 
+    timer = setTimeout(()=>push("debounce"), 250); 
+  };
 
   // Hook mutators
-  ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook","clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility","updateScheduleTime","updateDurationTime","toggleCompleted","startTimeline","startTimer"]
-    .forEach(fn => { const orig = window[fn]; if (typeof orig==="function"){ window[fn]=function(...a){ const r=orig.apply(this,a); schedule(); return r; }; } });
+  ["startDowntime","pauseDowntime","resumeDowntime","stopDowntime","addRunbookRow","removeRunbook",
+   "clearRunbook","updateSequence","updateStrategy","updatePhase","updateRunblock","updateResponsibility",
+   "updateCritical","updateScheduleTime","updateDurationTime","toggleCompleted","calculateEndTime"]
+    .forEach(fn => { 
+      const orig = window[fn]; 
+      if (typeof orig==="function"){ 
+        window[fn]=function(...a){ 
+          const r=orig.apply(this,a); 
+          schedule(); 
+          return r; 
+        }; 
+      } 
+    });
 
   // Watch URL-related fields (host)
   const watch = (id, paramName) => {
@@ -2298,36 +2466,51 @@ nodes.forEach(el => {
     if (!el) return;
     el.addEventListener("change", () => {
       schedule();
-      if (canWrite()) {
+      if (window.canWrite()) {
         const v = el.value || "";
         if (paramName === "customer") url.searchParams.set("customer", v || "default");
         if (paramName === "phase") url.searchParams.set("phase", v);
         history.replaceState(null, "", url.toString());
       }
     }, true);
-    el.addEventListener("input", () => { if (canWrite()) schedule(); }, true);
+    el.addEventListener("input", () => { 
+      if (window.canWrite()) schedule(); 
+    }, true);
   };
+  
   watch("customerName", "customer");
   watch("transformCycle", "phase");
 
-  // Periodic viewer refresh ticks
+  // Periodic viewer refresh ticks - sync timeline position in real-time
   setInterval(() => {
-    if (!canWrite()) {
+    if (!window.canWrite()) {
       updateViewerStatusBanner();
       updateViewerProgress();
       updateViewerTimelineVisual();
-      if (typeof window.updateClock === "function") { try { window.updateClock(); } catch {} }
+      if (typeof window.updateClock === "function") { 
+        try { window.updateClock(); } catch {} 
+      }
+      
+      // Update progress indicators for viewer to match host
+      if (typeof window.updateProgressIndicators === "function") {
+        try { window.updateProgressIndicators(); } catch {}
+      }
     }
   }, 1000);
 
-  // ===== Reset (HOST-only) — clears customer & phase and URL =====
+  // Reset (HOST-only)
   async function handleReset(){
-    if (!canWrite()) { alert("Only the host can reset the session."); return; }
+    if (!window.canWrite()) { 
+      alert("Only the host can reset the session."); 
+      return; 
+    }
     const yes = confirm("Reset the session for ALL viewers? This will clear customer, phase, runbooks and all timing.");
     if (!yes) return;
 
-    const cn = document.getElementById('customerName'); if (cn) cn.value = "";
-    const tp = document.getElementById('transformCycle'); if (tp) tp.value = "";
+    const cn = document.getElementById('customerName'); 
+    if (cn) cn.value = "";
+    const tp = document.getElementById('transformCycle'); 
+    if (tp) tp.value = "";
 
     const defaultState = {
       runbooks: [],
@@ -2336,13 +2519,23 @@ nodes.forEach(el => {
       downtimeDuration: 24,
       downtimePaused: false,
       pausedDuration: 0,
+      completionTimes: {},
       customerName: "",
       transformCycle: ""
     };
+    
     try {
-      await updateDoc(sessionRef, { state: defaultState, updatedAt: serverTimestamp(), reason: "reset" });
+      await updateDoc(sessionRef, { 
+        state: defaultState, 
+        updatedAt: serverTimestamp(), 
+        reason: "reset" 
+      });
     } catch (e) {
-      await setDoc(sessionRef, { state: defaultState, updatedAt: serverTimestamp(), reason: "reset" }, { merge: true });
+      await setDoc(sessionRef, { 
+        state: defaultState, 
+        updatedAt: serverTimestamp(), 
+        reason: "reset" 
+      }, { merge: true });
     }
 
     lockFieldsForStarted(false);
@@ -2354,18 +2547,7 @@ nodes.forEach(el => {
       history.replaceState(null, "", url.toString());
     } catch {}
 
-    updateViewerStatusBanner();
-    updateViewerProgress();
-    updateViewerTimelineVisual();
+    window.location.reload();
   }
-  const resetBtn = document.getElementById("rt-reset");
-  if (resetBtn) resetBtn.addEventListener("click", handleReset);
-</script>
-
-<!-- Bridge for classic scripts -->
-<script>
-  try { if (typeof AppState !== "undefined") window._AppStateRef = AppState; } catch (e) {}
-</script>
-
-</body>
-</html>
+  
+  document.getElementById("rt-reset").onclick = handleReset;
