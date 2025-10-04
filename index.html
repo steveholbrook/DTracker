@@ -42,6 +42,7 @@
     align-items:center;
     gap:12px;
     justify-content:space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   }
   
   .brand{
@@ -87,6 +88,8 @@
   
   .content{
     padding:16px;
+    max-width: 1600px;
+    margin: 0 auto;
   }
   
   .panel{
@@ -494,7 +497,7 @@
     justify-content:center;
     padding:0 4px;
     color:#fff;
-    font-size:10px;
+    font-size:9px;
     font-weight:600;
     transition:opacity 0.2s;
     box-shadow:0 1px 2px rgba(0,0,0,0.2);
@@ -527,7 +530,7 @@
   }
   
   /* Block label outside */
-  .block-label{
+  .block-label-external{
     position:absolute;
     left:100%;
     margin-left:6px;
@@ -540,11 +543,10 @@
     pointer-events:none;
   }
   
-  .quality-diamond + .block-label{
-    left:auto;
-    right:100%;
-    margin-right:6px;
-    margin-left:0;
+  .quality-diamond + .block-label-external{
+    left:100%;
+    margin-right:0;
+    margin-left:6px;
   }
   
   /* Critical path indicators */
@@ -759,6 +761,15 @@
     pointer-events: auto !important;
     opacity: 1 !important;
   }
+  
+  /* Performance improvements */
+  .timeline-block, .quality-diamond {
+    will-change: transform;
+  }
+  
+  .current-time-line {
+    will-change: left;
+  }
 </style>
 
 <script
@@ -794,7 +805,7 @@
       <div class="field-row">
         <div class="field" style="flex:1;">
           <label>Customer Name *</label>
-          <input type="text" id="customerName" placeholder="Enter customer name" value="ACME Corporation">
+          <input type="text" id="customerName" placeholder="Enter customer name" value="">
         </div>
         <div class="field" style="flex:1;">
           <label>Transform Cycle</label>
@@ -970,7 +981,8 @@ const AppState = {
   pauseStartTime: null,
   currentDraggedBlock: null,
   dragOffset: 0,
-  completionTimes: {}  // Store actual completion times
+  completionTimes: {},  // Store actual completion times
+  isFirstUser: false
 };
 
 // Strategy and Phase options
@@ -1033,8 +1045,23 @@ function calculateEndTime() {
     
     let displayText = `${endHours}:${endMinutes}:${endSeconds}`;
     
-    // Calculate days difference
-    const daysDiff = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24));
+    // Calculate days difference for every 24 hours
+    const daysDiff = Math.floor(duration / 24);
+    if (daysDiff > 0) {
+      displayText += ` (+${daysDiff} day${daysDiff > 1 ? 's' : ''})`;
+    }
+    
+    endTimeDisplay.textContent = displayText;
+  } else if (AppState.downtimeStarted && AppState.downtimeStartTime) {
+    const endDate = new Date(AppState.downtimeStartTime.getTime() + duration * 3600000);
+    
+    const endHours = String(endDate.getHours()).padStart(2, '0');
+    const endMinutes = String(endDate.getMinutes()).padStart(2, '0');
+    const endSeconds = String(endDate.getSeconds()).padStart(2, '0');
+    
+    let displayText = `${endHours}:${endMinutes}:${endSeconds}`;
+    
+    const daysDiff = Math.floor(duration / 24);
     if (daysDiff > 0) {
       displayText += ` (+${daysDiff} day${daysDiff > 1 ? 's' : ''})`;
     }
@@ -1358,10 +1385,10 @@ function createTimelineRow(runbook, index) {
       diamond.style.boxShadow = '0 0 8px rgba(255, 0, 0, 0.6)';
     }
     
-    // Add label to the left for quality gates
+    // Add label to the right for quality gates
     const label = document.createElement('div');
-    label.className = 'block-label';
-    label.textContent = `#${runbook.sequence} ${runbook.runblock}`;
+    label.className = 'block-label-external';
+    label.textContent = runbook.runblock;
     label.title = `${runbook.runblock} - ${runbook.phase}`;
     diamond.appendChild(label);
     
@@ -1467,10 +1494,14 @@ function createTimelineBlock(runbook) {
   block.style.left = `${position * pixelsPerHour}px`;
   block.style.width = `${Math.max(60, duration * pixelsPerHour - 4)}px`;
   
-  // Add label to the right of block
+  // Show sequence and phase inside the block
+  block.textContent = `#${runbook.sequence} | ${runbook.phase}`;
+  block.title = `${runbook.runblock} - ${runbook.phase}`;
+  
+  // Add label to the right of block for runblock name
   const blockLabel = document.createElement('div');
-  blockLabel.className = 'block-label';
-  blockLabel.textContent = `#${runbook.sequence} ${runbook.runblock}`;
+  blockLabel.className = 'block-label-external';
+  blockLabel.textContent = runbook.runblock;
   blockLabel.title = `${runbook.runblock} - ${runbook.phase}`;
   block.appendChild(blockLabel);
   
@@ -1652,18 +1683,10 @@ function startDowntime() {
   const startTimeStr = AppState.downtimeStartTime.toLocaleTimeString('en-US', 
     { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   
-  const endTime = new Date(AppState.downtimeStartTime.getTime() + downtimeDuration * 3600000);
-  const endTimeStr = endTime.toLocaleTimeString('en-US', 
-    { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-  
-  const daysDiff = Math.floor((endTime - AppState.downtimeStartTime) / (1000 * 60 * 60 * 24));
-  let endDisplay = endTimeStr;
-  if (daysDiff > 0) {
-    endDisplay += ` (+${daysDiff} day${daysDiff > 1 ? 's' : ''})`;
-  }
-  
   document.getElementById('startTimeDisplay').textContent = startTimeStr;
-  document.getElementById('endTimeDisplay').textContent = endDisplay;
+  
+  calculateEndTime();  // Update end time display
+  
   document.getElementById('statusText').textContent = 'In Progress';
   document.getElementById('statusText').style.color = 'var(--sap-error)';
   
@@ -2019,7 +2042,7 @@ function generateReport() {
   }
 </script>
 
-<!-- Firebase realtime sync -->
+<!-- Firebase realtime sync with auto mode detection -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -2043,7 +2066,8 @@ function generateReport() {
   const url = new URL(window.location.href);
   let customerParam = url.searchParams.get("customer") || "";
   let phaseParam = url.searchParams.get("phase") || url.searchParams.get("transformCycle") || "";
-  const viewerForced = url.searchParams.get("viewer") === "1";
+  let viewerParam = url.searchParams.get("viewer");
+  
   const nameInput = document.getElementById("customerName");
   const phaseInput = document.getElementById("transformCycle");
 
@@ -2057,12 +2081,38 @@ function generateReport() {
   if (phaseParam && !url.searchParams.get("phase") && !url.searchParams.get("transformCycle")) {
     url.searchParams.set("phase", phaseParam);
   }
-  if (!url.searchParams.get("customer") || (phaseParam && !url.searchParams.get("phase"))) {
-    history.replaceState(null, "", url.toString());
-  }
-
+  
   if (nameInput && customerParam) nameInput.value = customerParam;
   if (phaseInput && phaseParam) phaseInput.value = phaseParam;
+
+  // Auto mode detection
+  let isFirstUser = false;
+  let viewerForced = false;
+  
+  // Check if viewer param exists
+  if (viewerParam === null || viewerParam === undefined) {
+    // No viewer param - check if first user
+    const sessionRef = doc(db, "sessions", customerKey);
+    try {
+      const sessionSnap = await getDoc(sessionRef);
+      if (!sessionSnap.exists() || !sessionSnap.data()?.controllerUid) {
+        // First user - set as host
+        isFirstUser = true;
+        url.searchParams.set("viewer", "0");
+        window.AppState.isFirstUser = true;
+      } else {
+        // Not first user - set as viewer
+        url.searchParams.set("viewer", "1");
+        viewerForced = true;
+      }
+      history.replaceState(null, "", url.toString());
+    } catch (e) {
+      console.error("Error checking session:", e);
+    }
+  } else {
+    // Viewer param exists - use it
+    viewerForced = viewerParam === "1";
+  }
 
   // Overlay
   (function overlay(){
@@ -2081,13 +2131,16 @@ function generateReport() {
         <div style="font-size:12px;margin-bottom:4px"><b>Start:</b> <span id="rt-start">—</span></div>
         <div style="font-size:12px;margin-bottom:6px"><b>ETA:</b> <span id="rt-eta">—</span></div>
         <div style="position:relative;height:10px;border:1px solid #dcdcdc;border-radius:999px;overflow:hidden;background:#f2f3f6">
-          <div id="rt-bar" style="position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg, rgba(0,0,0,.2), rgba(0,0,0,.5))"></div>
+          <div id="rt-bar" style="position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg, #4CAF50, #2196F3)"></div>
         </div>
         <div id="rt-bar-label" style="font-size:11px;margin-top:4px;text-align:right">0%</div>
       </div>`;
     document.body.appendChild(right);
     document.getElementById("rt-copy").onclick = async () => {
-      await navigator.clipboard.writeText(window.location.href);
+      // Copy link with viewer=1 for others
+      const shareUrl = new URL(window.location.href);
+      shareUrl.searchParams.set("viewer", "1");
+      await navigator.clipboard.writeText(shareUrl.toString());
       const btn = document.getElementById("rt-copy"); 
       const prev = btn.textContent; 
       btn.textContent="Copied"; 
@@ -2310,14 +2363,41 @@ function generateReport() {
 
     const cn = document.getElementById("customerName");
     const tp = document.getElementById("transformCycle");
+    const dd = document.getElementById("downtimeDuration");
+    
     if (cn && typeof st.customerName === "string" && cn.value !== st.customerName) cn.value = st.customerName;
     if (tp && typeof st.transformCycle === "string" && tp.value !== st.transformCycle) tp.value = st.transformCycle;
+    if (dd && typeof st.downtimeDuration === "number") dd.value = st.downtimeDuration;
 
     lockFieldsForStarted(!!st.downtimeStarted);
+
+    // Update UI elements for viewer
+    if (st.downtimeStarted && st.downtimeStartTime) {
+      const startTime = new Date(st.downtimeStartTime);
+      document.getElementById('startTimeDisplay').textContent = startTime.toLocaleTimeString('en-US', 
+        { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      document.getElementById('startTimeDisplay').style.display = 'block';
+      document.getElementById('startTimeInput').style.display = 'none';
+      
+      document.getElementById('currentDurationDisplay').style.display = 'block';
+      document.getElementById('currentDurationInput').style.display = 'none';
+      
+      // Update status
+      const statusText = statusString(st);
+      document.getElementById('statusText').textContent = statusText;
+      if (statusText === 'In Progress' || statusText === 'Running') {
+        document.getElementById('statusText').style.color = 'var(--sap-error)';
+      } else if (statusText === 'Paused') {
+        document.getElementById('statusText').style.color = 'var(--sap-warning)';
+      } else if (statusText === 'Completed') {
+        document.getElementById('statusText').style.color = 'var(--sap-accent)';
+      }
+    }
 
     try {
       if (typeof window.renderRunbookTable === "function") window.renderRunbookTable();
       if (typeof window.updateClock === "function") window.updateClock();
+      if (typeof window.calculateEndTime === "function") window.calculateEndTime();
     } catch {}
 
     updateViewerStatusBanner();
@@ -2480,6 +2560,7 @@ function generateReport() {
   
   watch("customerName", "customer");
   watch("transformCycle", "phase");
+  watch("downtimeDuration", null);
 
   // Periodic viewer refresh ticks - sync timeline position in real-time
   setInterval(() => {
@@ -2551,3 +2632,7 @@ function generateReport() {
   }
   
   document.getElementById("rt-reset").onclick = handleReset;
+</script>
+
+</body>
+</html>
